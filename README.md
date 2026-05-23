@@ -1,7 +1,7 @@
 ## 👥 開発の始め方（チームメンバー向け）
 
 ### 初回セットアップ
-git clone https://github.com/Tomoodi/bingoquest.git
+git clone 
 cd bingoquest
 npm install
 npm run dev
