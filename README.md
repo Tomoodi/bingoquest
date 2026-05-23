@@ -26,4 +26,3 @@ git push origin feature/イシュー番号-作業名
 ### 注意
 - .env.localはGitHubに上げない
 - mainには直接pushしない
-- .env.localはともよからSlackで受け取る
