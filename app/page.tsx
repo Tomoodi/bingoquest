@@ -12,33 +12,34 @@ export default function StudentLoginPage() {
       </div>
 
       {/* ログインカード */}
-      <div className="w-full max-w-md border border-slate-800/80 bg-slate-900/50 backdrop-blur-md p-8 rounded-2xl shadow-2xl shadow-purple-950/10">
+      <div className="w-full max-w-md border border-slate-800/80 bg-slate-900/50 backdrop-blur-md p-8 rounded-2xl shadow-2xl">
         <h2 className="text-xl font-bold text-center mb-8 tracking-wider text-purple-400">
           生徒用ログイン
         </h2>
         
         <div className="space-y-6">
-          {/* 名前入力 */}
+          {/* 氏名入力 */}
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
               氏名
             </label>
             <input 
               type="text" 
-              placeholder="名前を入力" 
+              placeholder="名前を入力（例: 山田 太郎）" 
               className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-600 transition-all duration-200 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20" 
             />
           </div>
 
-          {/* パスワード入力 */}
+          {/* クラスコード入力 */}
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
-              パスワード
+              クラスコード（先生に聞いてね）
             </label>
             <input 
-              type="password" 
-              placeholder="••••••••" 
-              className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-600 transition-all duration-200 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20" 
+              type="text" 
+              maxLength={6}
+              placeholder="0 0 0 0 0 0" 
+              className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-center text-xl font-mono font-bold tracking-widest text-amber-400 placeholder-slate-700 transition-all duration-200 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20" 
             />
           </div>
 
