@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabase/client";
 import BossArea from "@/components/BossArea";
 
 type BingoQuestSession = {
@@ -69,6 +70,10 @@ export default function BingoPlayPage() {
   const [pendingCellId, setPendingCellId] = useState<number | null>(null);
   const [isOpeningCell, setIsOpeningCell] = useState(false); // open API 実行中
 
+  // ボス撃破時のアニメーション管理用State
+  const [showDefeatAnimation, setShowDefeatAnimation] = useState(false);
+  const [hasDefeated, setHasDefeated] = useState(false);
+
   // sessionStorage からコードを取得してクラス情報を読み込む処理 (setTimeoutで非同期化)
   useEffect(() => {
     const initSession = setTimeout(() => {
@@ -121,10 +126,48 @@ export default function BingoPlayPage() {
     return () => clearTimeout(initSession);
   }, []);
 
+  // ボスの撃破（HPが0になった瞬間）を監視する処理
   useEffect(() => {
-    if (!classId || !studentId || !cardId) {
-      return;
-    }
+    if (!classId || hasDefeated) return;
+
+    // Supabase Realtimeでboss_statesテーブルを監視
+    const channel = supabase
+      .channel("boss-defeat-watch")
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "boss_states",
+          filter: `class_id=eq.${classId}`,
+        },
+        (payload) => {
+          // 前回はHPが0より大きく、今回0以下になったら発動
+          if (
+            payload.new.current_hp <= 0 &&
+            payload.old.current_hp > 0 &&
+            !hasDefeated
+          ) {
+            setHasDefeated(true);
+            setShowDefeatAnimation(true);
+
+            // 4秒後にアニメーションを閉じてオーバーキル状態へ
+            setTimeout(() => {
+              setShowDefeatAnimation(false);
+            }, 4000);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [classId, hasDefeated]);
+
+  // ビンゴカードの読み込み
+  useEffect(() => {
+    if (!classId || !studentId || !cardId) return;
 
     const fetchBingoCard = async () => {
       setIsLoadingCard(true);
@@ -290,6 +333,23 @@ export default function BingoPlayPage() {
   return (
     <div className="flex min-h-screen flex-col bg-slate-950 text-white font-sans relative overflow-hidden">
 
+      {/* ボス撃破時の全画面アニメーションレイヤー */}
+      {showDefeatAnimation && (
+        <div className="fixed inset-0 bg-black/90 z-[100] flex flex-col items-center justify-center animate-fadeIn">
+          <h2 className="text-5xl md:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-b from-yellow-300 to-amber-600 animate-scaleUp text-center leading-tight">
+            BOSS DEFEATED!!
+          </h2>
+          <p className="text-lg md:text-xl text-yellow-200 mt-6 tracking-[0.2em] animate-pulse">
+            クラス全員で討伐成功！
+          </p>
+          <div className="mt-10 px-6 py-2 bg-purple-900/50 border border-purple-500 rounded-full animate-scaleUp" style={{ animationDelay: "0.5s" }}>
+            <span className="text-purple-300 font-bold tracking-widest text-sm">
+              OVERKILL BONUS 突入！
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* 上部ヘッダー */}
       <div className="w-full bg-slate-900/60 border-b border-slate-800 p-4 sticky top-0 z-10 backdrop-blur flex justify-between items-center shadow-md">
         <div>
@@ -419,7 +479,7 @@ export default function BingoPlayPage() {
         </div>
       )}
 
-      {/* 1.2秒で「存在ごと」綺麗に消える演出レイヤー */}
+      {/* 1.2秒で消えるビンゴ時の小アニメーション */}
       {showAnimation && (
         /* pointer-events-none から z-50 にすることで、開いている時だけ最前面にし、消えたら跡形もなく消滅する */
         <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-md z-50 flex flex-col items-center justify-center p-4 animate-fadeIn transition-all duration-300">
