@@ -59,7 +59,7 @@ export async function POST(request: Request) {
 
   const { data: classData, error: classError } = await supabaseServer
     .from("classes")
-    .select("id, code, name, grade_section")
+    .select("id, code, name, grade_section, lesson_theme, lesson_description")
     .eq("code", classCode)
     .maybeSingle();
 
@@ -97,6 +97,8 @@ export async function POST(request: Request) {
         code: classData.code,
         name: classData.name,
         gradeSection: classData.grade_section,
+        lessonTheme: classData.lesson_theme,
+        lessonDescription: classData.lesson_description,
       },
     },
     { status: 201 }

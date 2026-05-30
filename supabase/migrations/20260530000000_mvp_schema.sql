@@ -8,9 +8,15 @@ create table if not exists public.classes (
   code text not null unique check (code ~ '^[0-9]{6}$'),
   name text not null,
   grade_section text,
+  lesson_theme text,
+  lesson_description text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.classes
+  add column if not exists lesson_theme text,
+  add column if not exists lesson_description text;
 
 create table if not exists public.students (
   id uuid primary key default gen_random_uuid(),
@@ -266,12 +272,26 @@ begin
 end;
 $$;
 
-insert into public.classes (code, name, grade_section)
-values ('123456', 'MVPテストクラス', 'テスト')
+insert into public.classes (
+  code,
+  name,
+  grade_section,
+  lesson_theme,
+  lesson_description
+)
+values (
+  '123456',
+  'MVPテストクラス',
+  'テスト',
+  '英語: 不定詞と動名詞',
+  'to不定詞と動名詞の基本的な使い方を確認し、本文中の新出単語や重要熟語を扱います。'
+)
 on conflict (code) do update
 set
   name = excluded.name,
-  grade_section = excluded.grade_section;
+  grade_section = excluded.grade_section,
+  lesson_theme = excluded.lesson_theme,
+  lesson_description = excluded.lesson_description;
 
 insert into public.boss_states (class_id, name, max_hp, current_hp)
 select id, 'スライムキング', 1000, 1000
