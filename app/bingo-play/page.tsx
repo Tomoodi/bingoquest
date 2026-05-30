@@ -32,31 +32,37 @@ export default function BingoPlayPage() {
 
   // sessionStorage からコードを取得してクラス情報を読み込む処理
   useEffect(() => {
-    const storedCode = sessionStorage.getItem("roomCode");
+    // ログイン画面の SESSION_STORAGE_KEY ("bingoQuestSession") に合わせる
+    const sessionStr = sessionStorage.getItem("bingoQuestSession");
 
-    if (!storedCode) {
-      setClassName("エラー: コードなし");
+    if (!sessionStr) {
+      setClassName("エラー: ログイン情報がありません");
       return;
     }
 
-    setRoomCode(storedCode);
-
-    async function fetchClassData() {
-      const { data, error } = await supabase
-        .from("classes")
-        .select("id, name")
-        .eq("code", storedCode)
-        .single();
+    try {
+      // JSON文字列をオブジェクトに変換
+      const sessionData = JSON.parse(sessionStr);
       
-      if (data) {
-        setClassId(data.id);
-        setClassName(data.name);
-      } else if (error) {
-        setClassName("存在しないクラスです");
+      // sessionData.class.code に "123456" などのコードが入っている
+      const storedCode = sessionData.class.code;
+      const storedClassId = sessionData.class.id;
+      const storedClassName = sessionData.class.name;
+
+      if (!storedCode) {
+        setClassName("エラー: クラスコードが取得できません");
+        return;
       }
+
+      setRoomCode(storedCode);
+
+      setClassId(storedClassId);
+      setClassName(storedClassName);
+
+    } catch (error) {
+      console.error("セッションデータの解析に失敗しました:", error);
+      setClassName("エラー: 不正なデータです");
     }
-    
-    fetchClassData();
   }, []);
 
   // type="button" を追加して勝手なリロードを完全に防いだクリック関数
