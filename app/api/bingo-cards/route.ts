@@ -203,6 +203,17 @@ export async function POST(request: Request) {
     return jsonError(400, "INVALID_CELLS", "ビンゴカードの入力内容が正しくありません。");
   }
 
+  // FREEマス以外のマスの「テキスト（単語）」をランダムにシャッフルする
+  const normalCells = cells.filter((cell) => cell !== null && !cell.is_free);
+  
+  for (let i = normalCells.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    // normalCells[i] と normalCells[j] が存在することを ! で保証する
+    const tempText = normalCells[i]!.text;
+    normalCells[i]!.text = normalCells[j]!.text;
+    normalCells[j]!.text = tempText;
+  }
+
   const { data: studentData, error: studentError } = await supabaseServer
     .from("students")
     .select("id")
