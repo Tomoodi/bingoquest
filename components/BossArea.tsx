@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
+import { useEffect, useState, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '@/lib/supabase/client';
 
 type BossState = {
@@ -15,10 +15,18 @@ type BossState = {
   updated_at: string;
 };
 
+// ダメージのポップアップ文字を管理するための型
+type DamagePopup = {
+  id: number;
+  amount: number;
+  xOffset: number; // 左右に少しバラけさせるための値
+};
+
 export default function BossArea({ classId }: { classId: string }) {
   const [boss, setBoss] = useState<BossState | null>(null);
   const [isHit, setIsHit] = useState(false);
-
+  const [damagePopups, setDamagePopups] = useState<DamagePopup[]>([]);
+  const hitTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
     // 1. 初期のボスデータを取得
     async function fetchInitialBoss() {
@@ -49,8 +57,23 @@ export default function BossArea({ classId }: { classId: string }) {
           
           // HPの減少ではなく「総ダメージが増えた時」にダメージ演出を出す
           if (nextBoss.total_damage > previousBoss.total_damage) {
+            const diff = nextBoss.total_damage - previousBoss.total_damage;
+            // 揺れアニメーションをリセットして発動
             setIsHit(true);
-            setTimeout(() => setIsHit(false), 300);
+            if (hitTimeoutRef.current) clearTimeout(hitTimeoutRef.current);
+            hitTimeoutRef.current = setTimeout(() => setIsHit(false), 300);
+            // ダメージのポップアップ文字を生成
+            const newPopup = {
+              id: Date.now() + Math.random(), // ユニークなID
+              amount: diff,
+              xOffset: (Math.random() - 0.5) * 60, // -30pxから+30pxの範囲でランダムに左右にバラけさせる
+            };
+            setDamagePopups((prev) => [...prev, newPopup]);
+
+            // 1秒後にポップアップを消す
+            setTimeout(() => {
+              setDamagePopups((prev) => prev.filter(popup => popup.id !== newPopup.id));
+            }, 1000);
           }
         }
       )
@@ -58,6 +81,7 @@ export default function BossArea({ classId }: { classId: string }) {
 
     return () => {
       supabase.removeChannel(channel);
+      if (hitTimeoutRef.current) clearTimeout(hitTimeoutRef.current);
     };
   }, [classId]);
 
@@ -93,17 +117,39 @@ export default function BossArea({ classId }: { classId: string }) {
         )}
       </div>
 
-      {/* ボスのキャラクター（今回は絵文字を配置） */}
-      <motion.div
-        // ダメージを受けた時(isHit=true)だけ、左右に揺れて明るくなるアニメーション
-        animate={isHit ? { x: [-10, 10, -10, 10, 0], filter: "brightness(1.5)" } : {}}
-        transition={{ duration: 0.3 }}
-        className={`w-32 h-32 mx-auto rounded-lg shadow-lg mb-8 flex items-center justify-center text-6xl transition-colors duration-1000 ${
-          isOverkill ? 'bg-fuchsia-900 shadow-[0_0_20px_rgba(232,121,249,0.5)]' : 'bg-purple-600'
-        }`}
-      >
-        {isOverkill ? '👿' : '👾'}
-      </motion.div>
+      {/* ボスアイコンとポップアップの親コンテナ */}
+      <div className="relative flex justify-center mb-8">
+        {/* ボスのキャラクター（今回は絵文字を配置） */}
+        <motion.div
+          // 攻撃を受けた時は、X軸(左右)だけでなくY軸(上下)にも激しく揺れる
+          animate={isHit 
+            ? { x: [-15, 15, -10, 10, -5, 5, 0], y: [-5, 5, -5, 5, 0], filter: "brightness(1.5) saturate(1.5)" } 
+            : { x: 0, y: 0, filter: "brightness(1) saturate(1)" }
+          }
+          transition={{ duration: 0.4, ease: "easeInOut" }}
+          className={`w-32 h-32 rounded-lg shadow-lg flex items-center justify-center text-6xl transition-colors duration-1000 ${
+            isOverkill ? 'bg-fuchsia-900 shadow-[0_0_30px_rgba(232,121,249,0.8)]' : 'bg-purple-600'
+          }`}
+        >
+          {isOverkill ? '👿' : '👾'}
+        </motion.div>
+
+        {/* フワッと浮かび上がって消えるダメージ数値 */}
+        <AnimatePresence>
+          {damagePopups.map(p => (
+            <motion.div
+              key={p.id}
+              initial={{ opacity: 1, y: 0, x: p.xOffset, scale: 0.8 }}
+              animate={{ opacity: 0, y: -100, scale: 1.5 }} // 上に100px移動しながら大きくなって消える
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.8, ease: "easeOut" }}
+              className="absolute top-4 text-red-500 font-black text-4xl drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] z-10 pointer-events-none"
+            >
+              -{p.amount}
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
 
       {/* HPバーの外枠 (オーバーキル時は非表示にする) */}
       {!isOverkill && (
