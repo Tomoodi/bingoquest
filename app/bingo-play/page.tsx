@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { startTransition, useEffect, useMemo, useRef, useState } from "react";
 
 // 全12パターンのビンゴライン定数（5x5のマスID配列）
 const BINGO_LINES = [
@@ -12,7 +12,7 @@ const BINGO_LINES = [
 export default function BingoPlayPage() {
   const [openedCells, setOpenedCells] = useState<{ [key: number]: boolean }>({});
   const [showAnimation, setShowAnimation] = useState(false);
-  const [achievedLineIndexes, setAchievedLineIndexes] = useState<number[]>([]);
+  const previousAchievedLineIndexes = useRef<number[]>([]);
 
   const className = "ビンゴ";
 
@@ -36,28 +36,31 @@ export default function BingoPlayPage() {
   const gridCells = Array.from({ length: 25 }, (_, i) => i + 1);
   const openedCount = gridCells.filter((id) => id !== 13 && openedCells[id]).length;
 
-  /*  1. ビンゴラインの変更（マスの開閉）だけを監視する処理*/
-  useEffect(() => {
-    const newAchievedIndexes: number[] = [];
-
-    BINGO_LINES.forEach((line, index) => {
+  const achievedLineIndexes = useMemo(() => {
+    return BINGO_LINES.reduce<number[]>((indexes, line, index) => {
       const isComplete = line.every((id) => id === 13 || !!openedCells[id]);
       if (isComplete) {
-        newAchievedIndexes.push(index);
+        indexes.push(index);
       }
-    });
+      return indexes;
+    }, []);
+  }, [openedCells]);
 
-    const newlyDiscoveredLines = newAchievedIndexes.filter(
-      (idx) => !achievedLineIndexes.includes(idx)
+  /*  1. ビンゴラインの変更（マスの開閉）だけを監視する処理*/
+  useEffect(() => {
+    const newlyDiscoveredLines = achievedLineIndexes.filter(
+      (idx) => !previousAchievedLineIndexes.current.includes(idx)
     );
 
     // 新しいビンゴを検知したら演出をON
     if (newlyDiscoveredLines.length > 0) {
-      setShowAnimation(true);
+      startTransition(() => {
+        setShowAnimation(true);
+      });
     }
 
-    setAchievedLineIndexes(newAchievedIndexes);
-  }, [openedCells]);
+    previousAchievedLineIndexes.current = achievedLineIndexes;
+  }, [achievedLineIndexes]);
 
 
   /* 2. 演出フラグが ON になったら、1.2秒後に閉じるタイマー */
