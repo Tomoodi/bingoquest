@@ -148,6 +148,23 @@ export async function GET(request: Request) {
     return jsonError(404, "CARD_NOT_FOUND", "ビンゴカードのマスが揃っていません。");
   }
 
+  // 初期表示用に、まだ攻撃に使っていない（consumed_at = null）ポイント合計を集計する。
+  const { data: pointRows, error: pointsError } = await supabaseServer
+    .from("point_events")
+    .select("points")
+    .eq("student_id", studentId)
+    .is("consumed_at", null);
+
+  if (pointsError) {
+    console.error("Failed to sum accumulated points:", pointsError);
+    return jsonError(500, "FETCH_FAILED", "ポイントの集計に失敗しました。");
+  }
+
+  const accumulatedPoints = (pointRows ?? []).reduce(
+    (total, row) => total + (row.points as number),
+    0
+  );
+
   return Response.json({
     card: {
       id: cardData.id,
@@ -160,6 +177,7 @@ export async function GET(request: Request) {
         openedAt: cell.opened_at,
       })),
     },
+    accumulatedPoints,
   });
 }
 

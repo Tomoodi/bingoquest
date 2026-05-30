@@ -4,13 +4,6 @@ import React, { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase/client";
 import BossArea from "@/components/BossArea";
 
-// 全12パターンのビンゴライン定数（5x5のマスID配列）
-const BINGO_LINES = [
-  [1, 2, 3, 4, 5], [6, 7, 8, 9, 10], [11, 12, 13, 14, 15], [16, 17, 18, 19, 20], [21, 22, 23, 24, 25], // 横
-  [1, 6, 11, 16, 21], [2, 7, 12, 17, 22], [3, 8, 13, 18, 23], [4, 9, 14, 19, 24], [5, 10, 15, 20, 25], // 縦
-  [1, 7, 13, 19, 25], [5, 9, 13, 17, 21] // 斜め
-];
-
 type BingoQuestSession = {
   student: {
     id: string;
@@ -39,9 +32,17 @@ type BingoCardResponse = {
     id: string;
     cells: BingoCell[];
   };
+  accumulatedPoints: number;
 };
 
-type BingoCardErrorResponse = {
+type OpenCellResponse = {
+  accumulatedPoints: number;
+  newBingoLineCount: number;
+  newReachCount: number;
+  totalBingoLineCount: number;
+};
+
+type ApiErrorResponse = {
   error?: {
     message?: string;
   };
@@ -50,7 +51,8 @@ type BingoCardErrorResponse = {
 export default function BingoPlayPage() {
   const [openedCells, setOpenedCells] = useState<{ [key: number]: boolean }>({});
   const [showAnimation, setShowAnimation] = useState(false);
-  const [achievedLineIndexes, setAchievedLineIndexes] = useState<number[]>([]);
+  // 演出表示用：今回の開放で「新しく」揃ったビンゴライン数（同時 2 本なら Double 等）
+  const [bingoLinesCount, setBingoLinesCount] = useState(0);
   const [classId, setClassId] = useState<string | null>(null);
   const [studentId, setStudentId] = useState<string | null>(null);
   const [cardId, setCardId] = useState<string | null>(null);
@@ -60,9 +62,13 @@ export default function BingoPlayPage() {
   const [isLoadingCard, setIsLoadingCard] = useState(true);
   const [cardErrorMessage, setCardErrorMessage] = useState("");
 
-  // 蓄積された攻撃ポイントを管理するState
+  // 蓄積された攻撃ポイント（DB 由来。GET / open / attack のレスポンスで同期）
   const [accumulatedPoints, setAccumulatedPoints] = useState<number>(0);
   const [isAttacking, setIsAttacking] = useState(false); // 連打防止用
+
+  // 開放確認モーダルの対象マス（grid id 1-25）。null のとき非表示。
+  const [pendingCellId, setPendingCellId] = useState<number | null>(null);
+  const [isOpeningCell, setIsOpeningCell] = useState(false); // open API 実行中
 
   // ボス撃破時のアニメーション管理用State
   const [showDefeatAnimation, setShowDefeatAnimation] = useState(false);
@@ -123,23 +129,40 @@ export default function BingoPlayPage() {
   // ボスの撃破（HPが0になった瞬間）を監視する処理
   useEffect(() => {
     if (!classId || hasDefeated) return;
-    
+
     // Supabase Realtimeでboss_statesテーブルを監視
-    const channel = supabase.channel('boss-defeat-watch')
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'boss_states', filter: `class_id=eq.${classId}` }, (payload) => {
+    const channel = supabase
+      .channel("boss-defeat-watch")
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "boss_states",
+          filter: `class_id=eq.${classId}`,
+        },
+        (payload) => {
           // 前回はHPが0より大きく、今回0以下になったら発動
-          if (payload.new.current_hp <= 0 && payload.old.current_hp > 0 && !hasDefeated) {
+          if (
+            payload.new.current_hp <= 0 &&
+            payload.old.current_hp > 0 &&
+            !hasDefeated
+          ) {
             setHasDefeated(true);
             setShowDefeatAnimation(true);
-            
+
             // 4秒後にアニメーションを閉じてオーバーキル状態へ
             setTimeout(() => {
               setShowDefeatAnimation(false);
             }, 4000);
           }
-      }).subscribe();
+        }
+      )
+      .subscribe();
 
-    return () => { supabase.removeChannel(channel); }
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [classId, hasDefeated]);
 
   // ビンゴカードの読み込み
@@ -159,7 +182,7 @@ export default function BingoPlayPage() {
         const response = await fetch(`/api/bingo-cards?${params.toString()}`);
         const data = (await response.json()) as
           | BingoCardResponse
-          | BingoCardErrorResponse;
+          | ApiErrorResponse;
 
         if (!response.ok) {
           const message =
@@ -184,21 +207,10 @@ export default function BingoPlayPage() {
           return acc;
         }, {});
 
-        const currentAchieved = BINGO_LINES.reduce<number[]>((indexes, line, index) => {
-          const isComplete = line.every(
-            (cellId) => cellId === 13 || !!nextOpenedCells[cellId]
-          );
-          if (isComplete) {
-            indexes.push(index);
-          }
-          return indexes;
-        },
-        []
-      );
-
         setBingoCells(cellsById);
         setOpenedCells(nextOpenedCells);
-        setAchievedLineIndexes(currentAchieved);
+        // 貯蓄ポイントを DB の値で復元（リロードしても保持される）
+        setAccumulatedPoints(successData.accumulatedPoints);
       } catch (error) {
         console.error("ビンゴカードの取得に失敗しました:", error);
         setCardErrorMessage("通信に失敗しました。時間をおいてもう一度お試しください。");
@@ -210,65 +222,93 @@ export default function BingoPlayPage() {
     fetchBingoCard();
   }, [cardId, classId, studentId]);
 
-  // クリックイベント：マスを開け閉めし、ポイントを「蓄積」する
-  const handleCellClick = (id: number) => {
-    if (id === 13) return;
-    if (!classId || !studentId || isLoadingCard || cardErrorMessage) return;
+  // マスをタップ：開放可能か確認し、確認モーダルを開く（マス開放は一方向）
+  const requestOpenCell = (id: number) => {
+    if (id === 13) return; // FREE
+    if (!classId || !studentId || !cardId || isLoadingCard || cardErrorMessage) return;
     if (!bingoCells[id]) return;
+    if (openedCells[id]) return; // 一度開けたマスは閉じられない
+    setPendingCellId(id);
+  };
 
-    const isOpening = !openedCells[id];
-    // 1. 次のマス目の状態を作る
-    const nextOpened = { ...openedCells, [id]: isOpening };
+  const cancelOpenCell = () => {
+    if (isOpeningCell) return;
+    setPendingCellId(null);
+  };
 
-    // 2. その状態をもとに、ビンゴしているラインを計算する
-    const currentAchieved: number[] = [];
-    BINGO_LINES.forEach((line, index) => {
-      const isComplete = line.every((cellId) => cellId === 13 || !!nextOpened[cellId]);
-      if (isComplete) currentAchieved.push(index);
-    });
-
-    // 3. 過去のビンゴラインと比較して、新しくビンゴしたか確認する
-    const newlyDiscoveredLines = currentAchieved.filter(
-      (idx) => !achievedLineIndexes.includes(idx)
-    );
-
-    setOpenedCells(nextOpened);
-    setAchievedLineIndexes(currentAchieved);
-    // 新しいビンゴが見つかったら、アニメーションをONにする
-    if (newlyDiscoveredLines.length > 0) {
-      setShowAnimation(true);
+  // 確認モーダルで「はい」：open API を呼び、DB にマス開放とポイントイベントを記録する
+  const confirmOpenCell = async () => {
+    if (pendingCellId === null || isOpeningCell) return;
+    const id = pendingCellId;
+    const cell = bingoCells[id];
+    if (!cell || !classId || !studentId || !cardId) {
+      setPendingCellId(null);
+      return;
     }
 
-    // マスを開けた時だけポイントを「蓄積」する（まだ送信しない）
-    if (isOpening) {
-      let pointsToAdd = 10; // 1マス開けた基本ダメージ
+    setIsOpeningCell(true);
+    try {
+      const response = await fetch("/api/bingo-cells/open", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          classId,
+          studentId,
+          cardId,
+          position: cell.position,
+        }),
+      });
+      const data = (await response.json()) as
+        | OpenCellResponse
+        | ApiErrorResponse;
 
-      if (newlyDiscoveredLines.length > 0) {
-        const linesCount = newlyDiscoveredLines.length;
-        pointsToAdd += linesCount === 1 ? 150 : linesCount * 250;
+      if (!response.ok) {
+        const message =
+          "error" in data && data.error?.message
+            ? data.error.message
+            : "マスを開けませんでした。";
+        alert(message);
+        return;
       }
 
-      setAccumulatedPoints((prev) => prev + pointsToAdd);
+      const result = data as OpenCellResponse;
+      setOpenedCells((prev) => ({ ...prev, [id]: true }));
+      // 貯蓄ポイントはサーバ確定値で同期
+      setAccumulatedPoints(result.accumulatedPoints);
+      // 新しくビンゴが揃ったら演出を出す（今回揃った本数で Single/Double を表示）
+      if (result.newBingoLineCount > 0) {
+        setBingoLinesCount(result.newBingoLineCount);
+        setShowAnimation(true);
+      }
+    } catch (error) {
+      console.error("マスの開放に失敗しました:", error);
+      alert("通信に失敗しました。もう一度お試しください。");
+    } finally {
+      setIsOpeningCell(false);
+      setPendingCellId(null);
     }
   };
 
-  // 蓄積したポイントを一気に送信する攻撃関数
+  // 蓄積したポイントを一気に送信する攻撃関数（消費型）
   const handleAttack = async () => {
     if (accumulatedPoints <= 0 || !classId || !studentId || isAttacking) return;
 
     setIsAttacking(true); // 連打防止
-
     try {
-      // 蓄積されたポイントを一撃で送信
-      await supabase.rpc("apply_point_event", {
-        p_class_id: classId,
-        p_student_id: studentId,
-        p_card_id: cardId,
-        p_event_type: "bonus", // 一括攻撃は bonus イベントとして扱う
-        p_points: accumulatedPoints,
+      const response = await fetch("/api/attack", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ classId, studentId }),
       });
 
-      // 送信成功したら蓄積ポイントをゼロにリセット
+      if (!response.ok) {
+        const data = (await response.json()) as ApiErrorResponse;
+        const message = data.error?.message ?? "攻撃に失敗しました。";
+        alert(message);
+        return;
+      }
+
+      // 消費済みなので貯蓄ポイントは 0。ボス HP は BossArea が Realtime で反映する。
       setAccumulatedPoints(0);
     } catch (error) {
       console.error("攻撃の送信に失敗しました:", error);
@@ -288,11 +328,11 @@ export default function BingoPlayPage() {
     return () => clearTimeout(timer);
   }, [showAnimation]);
 
-  const bingoLinesCount = achievedLineIndexes.length;
+  const pendingCell = pendingCellId !== null ? bingoCells[pendingCellId] : null;
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-950 text-white font-sans relative overflow-hidden">
-      
+
       {/* ボス撃破時の全画面アニメーションレイヤー */}
       {showDefeatAnimation && (
         <div className="fixed inset-0 bg-black/90 z-[100] flex flex-col items-center justify-center animate-fadeIn">
@@ -302,7 +342,7 @@ export default function BingoPlayPage() {
           <p className="text-lg md:text-xl text-yellow-200 mt-6 tracking-[0.2em] animate-pulse">
             クラス全員で討伐成功！
           </p>
-          <div className="mt-10 px-6 py-2 bg-purple-900/50 border border-purple-500 rounded-full animate-scaleUp" style={{ animationDelay: '0.5s' }}>
+          <div className="mt-10 px-6 py-2 bg-purple-900/50 border border-purple-500 rounded-full animate-scaleUp" style={{ animationDelay: "0.5s" }}>
             <span className="text-purple-300 font-bold tracking-widest text-sm">
               OVERKILL BONUS 突入！
             </span>
@@ -329,7 +369,7 @@ export default function BingoPlayPage() {
 
       {/* メインエリア */}
       <div className="flex-1 max-w-md w-full mx-auto px-3 py-6 flex flex-col justify-start space-y-5">
-        
+
         {/* リアルタイムボスエリア */}
         {classId ? (
           <BossArea classId={classId} />
@@ -347,8 +387,8 @@ export default function BingoPlayPage() {
               disabled={isAttacking}
               className={`
                 w-full py-3 px-6 rounded-full font-black tracking-wider text-white shadow-lg transition-all duration-200
-                ${isAttacking 
-                  ? "bg-slate-600 cursor-not-allowed scale-95" 
+                ${isAttacking
+                  ? "bg-slate-600 cursor-not-allowed scale-95"
                   : "bg-gradient-to-r from-red-600 to-rose-500 hover:from-red-500 hover:to-rose-400 active:scale-95 shadow-[0_0_15px_rgba(225,29,72,0.5)] animate-pulse"
                 }
               `}
@@ -386,11 +426,12 @@ export default function BingoPlayPage() {
               <button
                 key={id}
                 type="button" //  これでボタン押下時のリロードをガード！
-                onClick={() => handleCellClick(id)}
+                onClick={() => requestOpenCell(id)}
+                disabled={isOpened}
                 className={`
                   relative rounded-xl border p-1 text-center flex flex-col items-center justify-center aspect-square transition-all duration-150 select-none outline-none active:scale-95
-                  ${isOpened 
-                    ? "border-emerald-500 bg-gradient-to-br from-emerald-950/40 to-slate-900 text-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.2)] font-bold" 
+                  ${isOpened
+                    ? "border-emerald-500 bg-gradient-to-br from-emerald-950/40 to-slate-900 text-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.2)] font-bold cursor-default"
                     : "border-slate-800/80 bg-slate-900/20 text-slate-400 hover:border-slate-700"
                   }
                 `}
@@ -405,18 +446,51 @@ export default function BingoPlayPage() {
         </div>
       </div>
 
+      {/* マス開放の確認モーダル（開けたら閉じられないので事前確認） */}
+      {pendingCell && (
+        <div className="absolute inset-0 bg-slate-950/85 backdrop-blur-sm z-40 flex items-center justify-center p-6 animate-fadeIn">
+          <div className="w-full max-w-xs rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl space-y-5">
+            <div className="text-center space-y-2">
+              <p className="text-[10px] font-mono uppercase tracking-widest text-emerald-500">Open Cell</p>
+              <p className="text-base font-black text-slate-100 break-all">「{pendingCell.text}」</p>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                このマスを開けますか？<br />一度開けると閉じられません。
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={cancelOpenCell}
+                disabled={isOpeningCell}
+                className="flex-1 py-2.5 rounded-full font-bold text-sm text-slate-300 border border-slate-700 hover:bg-slate-800 disabled:opacity-50 transition-colors"
+              >
+                いいえ
+              </button>
+              <button
+                type="button"
+                onClick={confirmOpenCell}
+                disabled={isOpeningCell}
+                className="flex-1 py-2.5 rounded-full font-black text-sm text-white bg-gradient-to-r from-emerald-600 to-green-500 hover:from-emerald-500 hover:to-green-400 active:scale-95 disabled:opacity-60 transition-all"
+              >
+                {isOpeningCell ? "開放中..." : "はい"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 1.2秒で消えるビンゴ時の小アニメーション */}
       {showAnimation && (
         /* pointer-events-none から z-50 にすることで、開いている時だけ最前面にし、消えたら跡形もなく消滅する */
         <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-md z-50 flex flex-col items-center justify-center p-4 animate-fadeIn transition-all duration-300">
-          
+
           {bingoLinesCount >= 2 ? (
             <div className="text-center space-y-4 max-w-sm w-full p-2 animate-scaleUp">
               <h2 className="text-5xl md:text-6xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-yellow-200 via-amber-400 to-orange-600 filter drop-shadow-[0_0_20px_rgba(245,158,11,0.6)] uppercase italic">
                 {bingoLinesCount === 2 ? "Double" : bingoLinesCount === 3 ? "Triple" : `${bingoLinesCount}Line`} <br />
                 <span className="text-6xl md:text-7xl block mt-1 tracking-tight">BINGO!!</span>
               </h2>
-              
+
               <div className="inline-block px-4 py-1 bg-amber-500/10 border border-amber-500/30 rounded-full">
                 <span className="font-mono text-sm font-black text-amber-400 tracking-wider">CRITICAL ATTACK +{bingoLinesCount * 250}PT</span>
               </div>
@@ -426,13 +500,13 @@ export default function BingoPlayPage() {
               <h2 className="text-6xl md:text-7xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-purple-300 via-fuchsia-500 to-indigo-700 filter drop-shadow-[0_0_15px_rgba(168,85,247,0.5)] uppercase italic">
                 BINGO!
               </h2>
-              
+
               <div className="inline-block px-4 py-1 bg-purple-500/10 border border-purple-500/30 rounded-full">
                 <span className="font-mono text-xs font-black text-purple-300 tracking-wider">BOSS DAMAGE +150PT</span>
               </div>
             </div>
           )}
-          
+
         </div>
       )}
 
