@@ -16,15 +16,32 @@ type BingoQuestSession = {
     lessonTheme: string | null;
     lessonDescription: string | null;
   };
+  bingoCard?: {
+    id: string;
+  };
 };
 
 const SESSION_STORAGE_KEY = "bingoQuestSession";
+
+type BingoCardErrorResponse = {
+  error?: {
+    message?: string;
+  };
+};
+
+type BingoCardSuccessResponse = {
+  card: {
+    id: string;
+  };
+};
 
 export default function BingoCreatePage() {
   const router = useRouter();
   const [session, setSession] = useState<BingoQuestSession | null>(null);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [inputs, setInputs] = useState<{ [key: number]: string }>({});
+  const [saveErrorMessage, setSaveErrorMessage] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     const storedSession = sessionStorage.getItem(SESSION_STORAGE_KEY);
@@ -89,6 +106,65 @@ export default function BingoCreatePage() {
   const filledCount = gridCells.filter(
     (id) => id !== 13 && inputs[id] && inputs[id].trim() !== ""
   ).length;
+
+  const canSave = filledCount === 24 && !!session && !isSaving;
+
+  const handleSaveCard = async () => {
+    if (!session || !canSave) {
+      return;
+    }
+
+    setSaveErrorMessage("");
+    setIsSaving(true);
+
+    const cells = gridCells.map((id) => ({
+      position: id - 1,
+      text: id === 13 ? "FREE" : inputs[id].trim(),
+      isFree: id === 13,
+    }));
+
+    try {
+      const response = await fetch("/api/bingo-cards", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          classId: session.class.id,
+          studentId: session.student.id,
+          cells,
+        }),
+      });
+
+      const data = (await response.json()) as
+        | BingoCardSuccessResponse
+        | BingoCardErrorResponse;
+
+      if (!response.ok) {
+        const message =
+          "error" in data && data.error?.message
+            ? data.error.message
+            : "ビンゴカードの保存に失敗しました。";
+        setSaveErrorMessage(message);
+        return;
+      }
+
+      const successData = data as BingoCardSuccessResponse;
+      const nextSession = {
+        ...session,
+        bingoCard: {
+          id: successData.card.id,
+        },
+      };
+
+      sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(nextSession));
+      router.push("/bingo-play");
+    } catch {
+      setSaveErrorMessage("通信に失敗しました。時間をおいてもう一度お試しください。");
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   if (isCheckingSession) {
     return (
@@ -199,18 +275,28 @@ export default function BingoCreatePage() {
 
         {/* ボタン */}
         <div className="pt-2">
+          {saveErrorMessage ? (
+            <p className="mb-3 rounded-lg border border-red-500/30 bg-red-950/30 px-3 py-2 text-sm text-red-200">
+              {saveErrorMessage}
+            </p>
+          ) : null}
           <button
-            disabled={filledCount < 24}
+            type="button"
+            disabled={!canSave}
             className={`
               w-full font-black py-4 rounded-xl shadow-lg transition-all duration-150 tracking-widest text-sm uppercase active:scale-[0.98]
-              ${filledCount === 24
+              ${canSave
                 ? "bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white shadow-purple-900/20"
                 : "bg-slate-900 border border-slate-800 text-slate-600 cursor-not-allowed shadow-none"
               }
             `}
-            onClick={() => alert("教科書ベースのビンゴカードが完成しました！")}
+            onClick={handleSaveCard}
           >
-            {filledCount === 24 ? "ビンゴカードを完成させる！" : "すべてのマスを入力してね"}
+            {isSaving
+              ? "保存中..."
+              : filledCount === 24
+                ? "ビンゴカードを完成させる！"
+                : "すべてのマスを入力してね"}
           </button>
         </div>
 
