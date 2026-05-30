@@ -51,7 +51,7 @@ type ApiErrorResponse = {
 export default function BingoPlayPage() {
   const [openedCells, setOpenedCells] = useState<{ [key: number]: boolean }>({});
   const [showAnimation, setShowAnimation] = useState(false);
-  // 演出表示用の合計ビンゴライン数（サーバ返却値で更新）
+  // 演出表示用：今回の開放で「新しく」揃ったビンゴライン数（同時 2 本なら Double 等）
   const [bingoLinesCount, setBingoLinesCount] = useState(0);
   const [classId, setClassId] = useState<string | null>(null);
   const [studentId, setStudentId] = useState<string | null>(null);
@@ -275,9 +275,9 @@ export default function BingoPlayPage() {
       setOpenedCells((prev) => ({ ...prev, [id]: true }));
       // 貯蓄ポイントはサーバ確定値で同期
       setAccumulatedPoints(result.accumulatedPoints);
-      // 新しくビンゴが揃ったら演出を出す
+      // 新しくビンゴが揃ったら演出を出す（今回揃った本数で Single/Double を表示）
       if (result.newBingoLineCount > 0) {
-        setBingoLinesCount(result.totalBingoLineCount);
+        setBingoLinesCount(result.newBingoLineCount);
         setShowAnimation(true);
       }
     } catch (error) {
