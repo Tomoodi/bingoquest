@@ -4,8 +4,18 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { supabase } from '@/lib/supabase/client';
 
+type BossState = {
+  id: string;
+  class_id: string;
+  name: string;
+  max_hp: number;
+  current_hp: number;
+  created_at: string;
+  updated_at: string;
+};
+
 export default function BossArea({ classId }: { classId: string }) {
-  const [boss, setBoss] = useState<any>(null);
+  const [boss, setBoss] = useState<BossState | null>(null);
   const [isHit, setIsHit] = useState(false);
 
   useEffect(() => {
@@ -31,10 +41,13 @@ export default function BossArea({ classId }: { classId: string }) {
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'boss_states', filter: `class_id=eq.${classId}` },
         (payload) => {
-          setBoss(payload.new);
+          const nextBoss = payload.new as BossState;
+          const previousBoss = payload.old as BossState;
+
+          setBoss(nextBoss);
           
           // ダメージ演出（シェイク）のトリガーをONにして、少し経ったらOFFにする
-          if (payload.new.current_hp < payload.old.current_hp) {
+          if (nextBoss.current_hp < previousBoss.current_hp) {
             setIsHit(true);
             setTimeout(() => setIsHit(false), 300);
           }
