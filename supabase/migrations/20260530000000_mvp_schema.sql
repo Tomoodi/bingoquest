@@ -3,11 +3,34 @@
 
 create extension if not exists pgcrypto;
 
+create or replace function public.generate_class_code()
+returns text
+language plpgsql
+as $$
+declare
+  generated_code text;
+begin
+  loop
+    generated_code := lpad(floor(random() * 1000000)::int::text, 6, '0');
+
+    exit when not exists (
+      select 1
+      from public.classes
+      where code = generated_code
+    );
+  end loop;
+
+  return generated_code;
+end;
+$$;
+
 create table if not exists public.classes (
   id uuid primary key default gen_random_uuid(),
-  code text not null unique check (code ~ '^[0-9]{6}$'),
+  code text not null default public.generate_class_code() unique check (code ~ '^[0-9]{6}$'),
   name text not null,
-  grade_section text,
+  teacher_name text,
+  grade text,
+  class_section text,
   lesson_theme text,
   lesson_description text,
   created_at timestamptz not null default now(),
@@ -15,8 +38,17 @@ create table if not exists public.classes (
 );
 
 alter table public.classes
+  add column if not exists teacher_name text,
+  add column if not exists grade text,
+  add column if not exists class_section text,
   add column if not exists lesson_theme text,
   add column if not exists lesson_description text;
+
+alter table public.classes
+  drop column if exists grade_section;
+
+alter table public.classes
+  alter column code set default public.generate_class_code();
 
 create table if not exists public.students (
   id uuid primary key default gen_random_uuid(),
@@ -275,21 +307,27 @@ $$;
 insert into public.classes (
   code,
   name,
-  grade_section,
+  teacher_name,
+  grade,
+  class_section,
   lesson_theme,
   lesson_description
 )
 values (
   '123456',
-  'MVPテストクラス',
-  'テスト',
+  '英語',
+  '田中先生',
+  '2年',
+  'A組',
   '英語: 不定詞と動名詞',
   'to不定詞と動名詞の基本的な使い方を確認し、本文中の新出単語や重要熟語を扱います。'
 )
 on conflict (code) do update
 set
   name = excluded.name,
-  grade_section = excluded.grade_section,
+  teacher_name = excluded.teacher_name,
+  grade = excluded.grade,
+  class_section = excluded.class_section,
   lesson_theme = excluded.lesson_theme,
   lesson_description = excluded.lesson_description;
 
