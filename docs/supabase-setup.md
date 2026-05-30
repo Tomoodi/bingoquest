@@ -31,3 +31,24 @@ Supabase 用の環境変数が設定されているか確認します。
 ```bash
 npm run check:supabase-env
 ```
+
+## MVP DB スキーマ作成
+
+Supabase Dashboard の SQL Editor を開き、以下のSQLを実行します。
+
+- [`supabase/migrations/20260530000000_mvp_schema.sql`](../supabase/migrations/20260530000000_mvp_schema.sql)
+
+このSQLで作成される主なテーブルは以下です。
+
+| テーブル | 用途 |
+| --- | --- |
+| `classes` | クラスコード、クラス名、授業テーマ、授業説明を管理する |
+| `students` | 生徒の氏名と参加クラスを管理する |
+| `boss_states` | クラスごとのボスHPを管理する |
+| `bingo_cards` | 生徒ごとのビンゴカードを管理する |
+| `bingo_cells` | ビンゴカードの25マスを管理する |
+| `point_events` | マス開放・リーチ・ビンゴなどのポイント履歴を管理する |
+
+SQL実行後、テスト用クラスコードとして `123456` が使えます。
+
+MVPではフロントエンドから開発しやすいように、RLSポリシーは緩めに設定しています。本番公開前には、認証・権限・更新可能範囲を見直してください。
