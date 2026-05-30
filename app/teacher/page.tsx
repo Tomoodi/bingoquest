@@ -28,7 +28,8 @@ export default function BingoTeacherManagementPage() {
     const generatedCode = Math.floor(100000 + Math.random() * 900000).toString();
 
     try {
-      const response = await fetch("/api/classes", {
+      // 1) クラスを作成
+      const classResponse = await fetch("/api/classes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -41,9 +42,23 @@ export default function BingoTeacherManagementPage() {
         }),
       });
 
-      if (!response.ok) throw new Error("作成に失敗しました。");
+      if (!classResponse.ok) throw new Error("クラスの作成に失敗しました。");
 
-      setClassCode(generatedCode);
+      const { class: createdClass } = (await classResponse.json()) as {
+        class: { id: string; code: string };
+      };
+
+      // 2) 作成したクラスのボスを初期化
+      const bossResponse = await fetch("/api/boss-states", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ classId: createdClass.id }),
+      });
+
+      if (!bossResponse.ok) throw new Error("ボスの初期化に失敗しました。");
+
+      // サーバが確定したコードを表示する
+      setClassCode(createdClass.code);
       setIsCreated(true);
     } catch (error) {
       console.error(error);
