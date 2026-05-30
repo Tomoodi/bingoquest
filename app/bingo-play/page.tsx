@@ -16,8 +16,13 @@ export default function BingoPlayPage() {
   const [showAnimation, setShowAnimation] = useState(false);
   const [achievedLineIndexes, setAchievedLineIndexes] = useState<number[]>([]);
   const [classId, setClassId] = useState<string | null>(null);
+  const [studentId, setStudentId] = useState<string | null>(null);
   const [className, setClassName] = useState<string>("読み込み中...");
   const [roomCode, setRoomCode] = useState<string>("");
+
+  // 蓄積された攻撃ポイントを管理するState
+  const [accumulatedPoints, setAccumulatedPoints] = useState<number>(0);
+  const [isAttacking, setIsAttacking] = useState(false); // 連打防止用
 
   const myBingoData: { [key: number]: string } = {
     1: "三平方の定理 (a²+b²=c²)", 2: "因数分解の公式", 3: "解の公式のルートの中身",
@@ -47,15 +52,17 @@ export default function BingoPlayPage() {
         const storedCode = sessionData.class.code;
         const storedClassId = sessionData.class.id;
         const storedClassName = sessionData.class.name;
+        const storedStudentId = sessionData.student.id;
 
-        if (!storedCode) {
-          setClassName("エラー: クラスコードが取得できません");
+        if (!storedCode || !storedStudentId) {
+          setClassName("エラー: ログイン情報が不完全です");
           return;
         }
 
         setRoomCode(storedCode);
         setClassId(storedClassId);
         setClassName(storedClassName);
+        setStudentId(storedStudentId);
       } catch (error) {
         console.error("セッションデータの解析に失敗しました:", error);
         setClassName("エラー: 不正なデータです");
@@ -65,37 +72,71 @@ export default function BingoPlayPage() {
     return () => clearTimeout(initSession);
   }, []);
 
-  // クリックイベント内でビンゴ判定を完結させる
+  // クリックイベント：マスを開け閉めし、ポイントを「蓄積」する
   const handleCellClick = (id: number) => {
     if (id === 13) return;
+    if (!classId || !studentId) return;
 
-    setOpenedCells((prevOpened) => {
-      // 1. 次のマス目の状態を作る
-      const nextOpened = { ...prevOpened, [id]: !prevOpened[id] };
+    const isOpening = !openedCells[id];
+    // 1. 次のマス目の状態を作る
+    const nextOpened = { ...openedCells, [id]: isOpening };
 
-      // 2. その状態をもとに、ビンゴしているラインを計算する
-      const currentAchieved: number[] = [];
-      BINGO_LINES.forEach((line, index) => {
-        const isComplete = line.every((cellId) => cellId === 13 || !!nextOpened[cellId]);
-        if (isComplete) currentAchieved.push(index);
-      });
-
-      // 3. 過去のビンゴラインと比較して、新しくビンゴしたか確認する
-      setAchievedLineIndexes((prevIndexes) => {
-        const newlyDiscoveredLines = currentAchieved.filter(
-          (idx) => !prevIndexes.includes(idx)
-        );
-
-        // 新しいビンゴが見つかったら、アニメーションをONにする
-        if (newlyDiscoveredLines.length > 0) {
-          setShowAnimation(true);
-        }
-
-        return currentAchieved;
-      });
-
-      return nextOpened;
+    // 2. その状態をもとに、ビンゴしているラインを計算する
+    const currentAchieved: number[] = [];
+    BINGO_LINES.forEach((line, index) => {
+      const isComplete = line.every((cellId) => cellId === 13 || !!nextOpened[cellId]);
+      if (isComplete) currentAchieved.push(index);
     });
+
+    // 3. 過去のビンゴラインと比較して、新しくビンゴしたか確認する
+    const newlyDiscoveredLines = currentAchieved.filter(
+      (idx) => !achievedLineIndexes.includes(idx)
+    );
+
+    setOpenedCells(nextOpened);
+    setAchievedLineIndexes(currentAchieved);
+    // 新しいビンゴが見つかったら、アニメーションをONにする
+    if (newlyDiscoveredLines.length > 0) {
+      setShowAnimation(true);
+    }
+
+    // マスを開けた時だけポイントを「蓄積」する（まだ送信しない）
+    if (isOpening) {
+      let pointsToAdd = 10; // 1マス開けた基本ダメージ
+
+      if (newlyDiscoveredLines.length > 0) {
+        const linesCount = newlyDiscoveredLines.length;
+        pointsToAdd += linesCount === 1 ? 150 : linesCount * 250;
+      }
+
+      setAccumulatedPoints((prev) => prev + pointsToAdd);
+    }
+  };
+
+  // 蓄積したポイントを一気に送信する攻撃関数
+  const handleAttack = async () => {
+    if (accumulatedPoints <= 0 || !classId || !studentId || isAttacking) return;
+
+    setIsAttacking(true); // 連打防止
+
+    try {
+      // 蓄積されたポイントを一撃で送信
+      await supabase.rpc("apply_point_event", {
+        p_class_id: classId,
+        p_student_id: studentId,
+        p_card_id: null,
+        p_event_type: "bonus", // 一括攻撃は bonus イベントとして扱う
+        p_points: accumulatedPoints,
+      });
+
+      // 送信成功したら蓄積ポイントをゼロにリセット
+      setAccumulatedPoints(0);
+    } catch (error) {
+      console.error("攻撃の送信に失敗しました:", error);
+      alert("攻撃に失敗しました。もう一度お試しください。");
+    } finally {
+      setIsAttacking(false);
+    }
   };
 
   const gridCells = Array.from({ length: 25 }, (_, i) => i + 1);
@@ -104,11 +145,7 @@ export default function BingoPlayPage() {
   // 演出フラグが ON になったら、1.2秒後に閉じるタイマー
   useEffect(() => {
     if (!showAnimation) return;
-
-    const timer = setTimeout(() => {
-      setShowAnimation(false);
-    }, 1200);
-
+    const timer = setTimeout(() => setShowAnimation(false), 1200);
     return () => clearTimeout(timer);
   }, [showAnimation]);
 
@@ -135,7 +172,7 @@ export default function BingoPlayPage() {
       </div>
 
       {/* メインエリア */}
-      <div className="flex-1 max-w-md w-full mx-auto px-3 py-6 flex flex-col justify-start space-y-6">
+      <div className="flex-1 max-w-md w-full mx-auto px-3 py-6 flex flex-col justify-start space-y-5">
         
         {/* リアルタイムボスエリア */}
         {classId ? (
@@ -145,6 +182,29 @@ export default function BingoPlayPage() {
             {className === "読み込み中..." ? "ボスを召喚中..." : "クラス情報が取得できません"}
           </div>
         )}
+
+        {/* 蓄積ポイントがある時だけ表示される攻撃ボタン */}
+        <div className="h-14 flex items-center justify-center">
+          {accumulatedPoints > 0 ? (
+            <button
+              onClick={handleAttack}
+              disabled={isAttacking}
+              className={`
+                w-full py-3 px-6 rounded-full font-black tracking-wider text-white shadow-lg transition-all duration-200
+                ${isAttacking 
+                  ? "bg-slate-600 cursor-not-allowed scale-95" 
+                  : "bg-gradient-to-r from-red-600 to-rose-500 hover:from-red-500 hover:to-rose-400 active:scale-95 shadow-[0_0_15px_rgba(225,29,72,0.5)] animate-pulse"
+                }
+              `}
+            >
+              {isAttacking ? "攻撃中..." : `💥 ${accumulatedPoints} PT 攻撃する！`}
+            </button>
+          ) : (
+            <p className="text-xs text-slate-500 font-mono tracking-widest text-center w-full">
+              - WAITING FOR ENERGY -
+            </p>
+          )}
+        </div>
 
         {/* ビンゴグリッドエリア */}
         <div className="grid grid-cols-5 gap-2 w-full aspect-square">
@@ -180,7 +240,7 @@ export default function BingoPlayPage() {
         </div>
       </div>
 
-      {/* 1.2秒で「存在ごと」綺麗に消える演出レイヤー*/}
+      {/* 1.2秒で「存在ごと」綺麗に消える演出レイヤー */}
       {showAnimation && (
         /* pointer-events-none から z-50 にすることで、開いている時だけ最前面にし、消えたら跡形もなく消滅する */
         <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-md z-50 flex flex-col items-center justify-center p-4 animate-fadeIn transition-all duration-300">
