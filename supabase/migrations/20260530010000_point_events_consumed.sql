@@ -69,9 +69,10 @@ begin
     and class_id = p_class_id
     and consumed_at is null;
 
-  -- 合計分だけボス HP を減らす。
+  -- 合計分だけボス HP を減らし、総ダメージ（total_damage）も加算する
   update public.boss_states
-  set current_hp = greatest(0, current_hp - total_points)
+  set current_hp = greatest(0, current_hp - total_points),
+      total_damage = coalesce(total_damage, 0) + total_points
   where class_id = p_class_id
   returning * into updated_boss;
 
