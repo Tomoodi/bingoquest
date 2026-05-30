@@ -30,75 +30,78 @@ export default function BingoPlayPage() {
     23: "デカい木製三角定規が登場", 24: "出席番号の下1桁で当てられる", 25: "チャイムと同時に板書終了",
   };
 
-  // sessionStorage からコードを取得してクラス情報を読み込む処理
+  // sessionStorage からコードを取得してクラス情報を読み込む処理 (setTimeoutで非同期化)
   useEffect(() => {
-    // ログイン画面の SESSION_STORAGE_KEY ("bingoQuestSession") に合わせる
-    const sessionStr = sessionStorage.getItem("bingoQuestSession");
+    const initSession = setTimeout(() => {
+      const sessionStr = sessionStorage.getItem("bingoQuestSession");
 
-    if (!sessionStr) {
-      setClassName("エラー: ログイン情報がありません");
-      return;
-    }
-
-    try {
-      // JSON文字列をオブジェクトに変換
-      const sessionData = JSON.parse(sessionStr);
-      
-      // sessionData.class.code に "123456" などのコードが入っている
-      const storedCode = sessionData.class.code;
-      const storedClassId = sessionData.class.id;
-      const storedClassName = sessionData.class.name;
-
-      if (!storedCode) {
-        setClassName("エラー: クラスコードが取得できません");
+      if (!sessionStr) {
+        setClassName("エラー: ログイン情報がありません");
         return;
       }
 
-      setRoomCode(storedCode);
+      try {
+        // JSON文字列をオブジェクトに変換
+        const sessionData = JSON.parse(sessionStr);
+        // sessionData.class.code に "123456" などのコードが入っている
+        const storedCode = sessionData.class.code;
+        const storedClassId = sessionData.class.id;
+        const storedClassName = sessionData.class.name;
 
-      setClassId(storedClassId);
-      setClassName(storedClassName);
+        if (!storedCode) {
+          setClassName("エラー: クラスコードが取得できません");
+          return;
+        }
 
-    } catch (error) {
-      console.error("セッションデータの解析に失敗しました:", error);
-      setClassName("エラー: 不正なデータです");
-    }
+        setRoomCode(storedCode);
+        setClassId(storedClassId);
+        setClassName(storedClassName);
+      } catch (error) {
+        console.error("セッションデータの解析に失敗しました:", error);
+        setClassName("エラー: 不正なデータです");
+      }
+    }, 0); // 0ミリ秒遅延させることで同期的なsetState判定を回避
+
+    return () => clearTimeout(initSession);
   }, []);
 
-  // type="button" を追加して勝手なリロードを完全に防いだクリック関数
+  // クリックイベント内でビンゴ判定を完結させる
   const handleCellClick = (id: number) => {
     if (id === 13) return;
-    setOpenedCells((prev) => ({ ...prev, [id]: !prev[id] }));
+
+    setOpenedCells((prevOpened) => {
+      // 1. 次のマス目の状態を作る
+      const nextOpened = { ...prevOpened, [id]: !prevOpened[id] };
+
+      // 2. その状態をもとに、ビンゴしているラインを計算する
+      const currentAchieved: number[] = [];
+      BINGO_LINES.forEach((line, index) => {
+        const isComplete = line.every((cellId) => cellId === 13 || !!nextOpened[cellId]);
+        if (isComplete) currentAchieved.push(index);
+      });
+
+      // 3. 過去のビンゴラインと比較して、新しくビンゴしたか確認する
+      setAchievedLineIndexes((prevIndexes) => {
+        const newlyDiscoveredLines = currentAchieved.filter(
+          (idx) => !prevIndexes.includes(idx)
+        );
+
+        // 新しいビンゴが見つかったら、アニメーションをONにする
+        if (newlyDiscoveredLines.length > 0) {
+          setShowAnimation(true);
+        }
+
+        return currentAchieved;
+      });
+
+      return nextOpened;
+    });
   };
 
   const gridCells = Array.from({ length: 25 }, (_, i) => i + 1);
   const openedCount = gridCells.filter((id) => id !== 13 && openedCells[id]).length;
 
-  /*  1. ビンゴラインの変更（マスの開閉）だけを監視する処理*/
-  useEffect(() => {
-    const newAchievedIndexes: number[] = [];
-
-    BINGO_LINES.forEach((line, index) => {
-      const isComplete = line.every((id) => id === 13 || !!openedCells[id]);
-      if (isComplete) {
-        newAchievedIndexes.push(index);
-      }
-    });
-
-    const newlyDiscoveredLines = newAchievedIndexes.filter(
-      (idx) => !achievedLineIndexes.includes(idx)
-    );
-
-    // 新しいビンゴを検知したら演出をON
-    if (newlyDiscoveredLines.length > 0) {
-      setShowAnimation(true);
-    }
-
-    setAchievedLineIndexes(newAchievedIndexes);
-  }, [openedCells]);
-
-
-  /* 2. 演出フラグが ON になったら、1.2秒後に閉じるタイマー */
+  // 演出フラグが ON になったら、1.2秒後に閉じるタイマー
   useEffect(() => {
     if (!showAnimation) return;
 
@@ -108,7 +111,6 @@ export default function BingoPlayPage() {
 
     return () => clearTimeout(timer);
   }, [showAnimation]);
-
 
   const bingoLinesCount = achievedLineIndexes.length;
 
