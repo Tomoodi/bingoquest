@@ -12,7 +12,9 @@ type BingoQuestSession = {
     id: string;
     code: string;
     name: string;
-    gradeSection: string | null;
+    teacherName: string | null;
+    grade: string | null;
+    classSection: string | null;
     lessonTheme: string | null;
     lessonDescription: string | null;
   };
@@ -209,12 +211,29 @@ export default function BingoCreatePage() {
               </div>
               <div className="shrink-0 text-right">
                 <p className="text-[10px] font-bold tracking-widest text-slate-500">
-                  {session.class.code}
+                  CODE {session.class.code}
                 </p>
                 <p className="mt-1 text-xs font-bold text-slate-300">
                   {session.student.name}
                 </p>
               </div>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-bold tracking-wide text-slate-300">
+              {(session.class.grade || session.class.classSection) ? (
+                <span className="rounded-md border border-amber-500/20 bg-slate-950/30 px-2 py-1">
+                  {[session.class.grade, session.class.classSection]
+                    .filter(Boolean)
+                    .join(" ")}
+                </span>
+              ) : null}
+              {session.class.teacherName ? (
+                <span className="rounded-md border border-amber-500/20 bg-slate-950/30 px-2 py-1">
+                  {session.class.teacherName}
+                </span>
+              ) : null}
+              <span className="rounded-md border border-amber-500/20 bg-slate-950/30 px-2 py-1">
+                {session.class.name}
+              </span>
             </div>
             {session.class.lessonDescription ? (
               <p className="mt-3 text-xs leading-relaxed text-slate-300">
