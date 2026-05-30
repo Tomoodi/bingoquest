@@ -1,18 +1,68 @@
 import { NextRequest, NextResponse } from "next/server"
-import { GoogleGenerativeAI } from "@google/generative-ai"
-
-const genAI = new
-  GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
-const model = genAI.getGenerativeModel({ model:
-  "gemini-1.5-flash" })
+import Groq from "groq-sdk"
+import { supabase } from "@/lib/supabase/client"
 
 export async function POST(req: NextRequest) {
-    const { lesson_theme, lesson_description } = await
-  req.json()
-    const prompt = `あなたは教育支援AIです。テーマが${lesson_theme}、概要が${lesson_description}の授業の1問1答の問題を作成してください。`
-    const result = await model.generateContent(prompt)
-    const text = result.response.text()
-    const json = JSON.parse(text?.[0])
+  try {
+    const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
+    const body = await req.json()
+    console.log("[generate-card] body:", JSON.stringify(body))
+    const { studentWords, teacherWords, lesson_theme, lesson_description, class_id, student_id } = body
 
-  return NextResponse.json(json)
+    const totalNeeded = 24 - (teacherWords?.length ?? 0) - (studentWords?.length ?? 0)
+    const existingWords = [...(studentWords ?? []), ...(teacherWords ?? [])]
+
+    const prompt = `あなたは教育支援AIです。テーマが${lesson_theme}、概要が${lesson_description}の授業のビンゴカード用キーワードをあと${totalNeeded}個生成してください。すでにあるキーワード:${existingWords.join(", ")} 条件：重複なし、授業で使われる専門用語中心、JSON形式で {"words": ["単語1","単語2",...]}のみ返すこと`
+
+    console.log("[generate-card] calling Groq...")
+    const completion = await groq.chat.completions.create({
+      model: "llama-3.1-8b-instant",
+      messages: [{ role: "user", content: prompt }],
+      response_format: { type: "json_object" },
+    })
+    const text = completion.choices[0].message.content ?? "{}"
+    console.log("[generate-card] Groq response:", text)
+
+    const json = JSON.parse(text)
+
+    const allWords = [...existingWords, ...(json.words ?? [])]
+      .sort(() => Math.random() - 0.5)
+      .slice(0, 24)
+
+    console.log("[generate-card] upserting card...")
+    const { data: card, error: cardError } = await supabase
+      .from("bingo_cards")
+      .upsert(
+        { class_id, student_id, student_words: studentWords ?? [] },
+        { onConflict: "student_id,class_id" }
+      )
+      .select()
+      .single()
+
+    if (cardError || !card) {
+      console.error("[generate-card] card upsert error:", cardError)
+      return NextResponse.json({ error: cardError?.message ?? "card upsert failed" }, { status: 500 })
+    }
+
+    await supabase.from("bingo_cells").delete().eq("card_id", card.id)
+
+    const cells = Array.from({ length: 25 }, (_, i) => ({
+      card_id: card.id,
+      position: i,
+      text: i === 12 ? "FREE" : allWords[i < 12 ? i : i - 1],
+      is_free: i === 12,
+    }))
+
+    const { error: cellsError } = await supabase.from("bingo_cells").insert(cells)
+
+    if (cellsError) {
+      console.error("[generate-card] cells insert error:", cellsError)
+      return NextResponse.json({ error: cellsError.message }, { status: 500 })
+    }
+
+    return NextResponse.json({ card_id: card.id })
+  } catch (e) {
+    console.error("[generate-card] unexpected error:", e)
+    return NextResponse.json({ error: String(e) }, { status: 500 })
+  }
 }

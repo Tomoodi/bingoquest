@@ -44,6 +44,9 @@ export default function BingoCreatePage() {
   const [inputs, setInputs] = useState<{ [key: number]: string }>({});
   const [saveErrorMessage, setSaveErrorMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [showAiSection, setShowAiSection] = useState(false)
+  const [aiStudentWords, setAiStudentWords] = useState(["", "", "", ""])
+  const [isGenerating, setIsGenerating] = useState(false)
 
   useEffect(() => {
     const storedSession = sessionStorage.getItem(SESSION_STORAGE_KEY);
@@ -110,6 +113,36 @@ export default function BingoCreatePage() {
   ).length;
 
   const canSave = filledCount === 24 && !!session && !isSaving;
+
+  const handleAiGenerate = async () => {
+    setIsGenerating(true)
+    try {
+      const res = await fetch("/api/generate-card", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          studentWords: aiStudentWords.filter(w => w.trim() !== ""),
+          teacherWords: [],
+          lesson_theme: session?.class.lessonTheme ?? "",
+          lesson_description: session?.class.lessonDescription ?? "",
+          class_id: session?.class.id,
+          student_id: session?.student.id,
+        }),
+      })
+      const data = await res.json()
+      if (data.card_id) {
+        const nextSession = { ...session, bingoCard: { id: data.card_id } }
+        sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(nextSession))
+        router.push("/bingo-play")
+      } else {
+        setSaveErrorMessage(data.error ?? "AI生成に失敗しました。")
+      }
+    } catch {
+      setSaveErrorMessage("通信に失敗しました。時間をおいてもう一度お試しください。")
+    } finally {
+      setIsGenerating(false)
+    }
+  }
 
   const handleSaveCard = async () => {
     if (!session || !canSave) {
@@ -317,6 +350,42 @@ export default function BingoCreatePage() {
                 ? "ビンゴカードを完成させる！"
                 : "すべてのマスを入力してね"}
           </button>
+
+          <div className="mt-4">
+            <button
+              type="button"
+              onClick={() => setShowAiSection(!showAiSection)}
+              className="w-full font-black py-4 rounded-xl border border-purple-500/40 text-purple-400 text-sm uppercase tracking-widest hover:bg-purple-950/20 transition-all"
+            >
+              AIでビンゴカードを作成する
+            </button>
+            {showAiSection && (
+              <div className="mt-4 space-y-2">
+                {aiStudentWords.map((word, i) => (
+                  <input
+                    key={i}
+                    type="text"
+                    placeholder={`キーワード ${i + 1}`}
+                    value={word}
+                    onChange={(e) => {
+                      const next = [...aiStudentWords];
+                      next[i] = e.target.value;
+                      setAiStudentWords(next);
+                    }}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 outline-none focus:border-purple-500"
+                  />
+                ))}
+                <button
+                  type="button"
+                  onClick={handleAiGenerate}
+                  disabled={isGenerating}
+                  className="w-full font-black py-4 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-sm uppercase tracking-widest mt-2 disabled:opacity-50"
+                >
+                  {isGenerating ? "生成中..." : "生成する"}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
       </div>
