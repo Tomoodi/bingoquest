@@ -59,7 +59,9 @@ export async function POST(request: Request) {
 
   const { data: classData, error: classError } = await supabaseServer
     .from("classes")
-    .select("id, code, name, grade_section, lesson_theme, lesson_description")
+    .select(
+      "id, code, name, teacher_name, grade, class_section, lesson_theme, lesson_description"
+    )
     .eq("code", classCode)
     .maybeSingle();
 
@@ -96,7 +98,9 @@ export async function POST(request: Request) {
         id: classData.id,
         code: classData.code,
         name: classData.name,
-        gradeSection: classData.grade_section,
+        teacherName: classData.teacher_name,
+        grade: classData.grade,
+        classSection: classData.class_section,
         lessonTheme: classData.lesson_theme,
         lessonDescription: classData.lesson_description,
       },
