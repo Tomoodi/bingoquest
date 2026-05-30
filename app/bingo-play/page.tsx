@@ -1,6 +1,8 @@
 "use client";
 
-import React, { startTransition, useEffect, useMemo, useRef, useState } from "react";
+import React, { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabase/client";
+import BossArea from "@/components/BossArea";
 
 // 全12パターンのビンゴライン定数（5x5のマスID配列）
 const BINGO_LINES = [
@@ -12,9 +14,15 @@ const BINGO_LINES = [
 export default function BingoPlayPage() {
   const [openedCells, setOpenedCells] = useState<{ [key: number]: boolean }>({});
   const [showAnimation, setShowAnimation] = useState(false);
-  const previousAchievedLineIndexes = useRef<number[]>([]);
+  const [achievedLineIndexes, setAchievedLineIndexes] = useState<number[]>([]);
+  const [classId, setClassId] = useState<string | null>(null);
+  const [studentId, setStudentId] = useState<string | null>(null);
+  const [className, setClassName] = useState<string>("読み込み中...");
+  const [roomCode, setRoomCode] = useState<string>("");
 
-  const className = "ビンゴ";
+  // 蓄積された攻撃ポイントを管理するState
+  const [accumulatedPoints, setAccumulatedPoints] = useState<number>(0);
+  const [isAttacking, setIsAttacking] = useState(false); // 連打防止用
 
   const myBingoData: { [key: number]: string } = {
     1: "三平方の定理 (a²+b²=c²)", 2: "因数分解の公式", 3: "解の公式のルートの中身",
@@ -27,53 +35,119 @@ export default function BingoPlayPage() {
     23: "デカい木製三角定規が登場", 24: "出席番号の下1桁で当てられる", 25: "チャイムと同時に板書終了",
   };
 
-  // type="button" を追加して勝手なリロードを完全に防いだクリック関数
+  // sessionStorage からコードを取得してクラス情報を読み込む処理 (setTimeoutで非同期化)
+  useEffect(() => {
+    const initSession = setTimeout(() => {
+      const sessionStr = sessionStorage.getItem("bingoQuestSession");
+
+      if (!sessionStr) {
+        setClassName("エラー: ログイン情報がありません");
+        return;
+      }
+
+      try {
+        // JSON文字列をオブジェクトに変換
+        const sessionData = JSON.parse(sessionStr);
+        // sessionData.class.code に "123456" などのコードが入っている
+        const storedCode = sessionData.class.code;
+        const storedClassId = sessionData.class.id;
+        const storedClassName = sessionData.class.name;
+        const storedStudentId = sessionData.student.id;
+
+        if (!storedCode || !storedStudentId) {
+          setClassName("エラー: ログイン情報が不完全です");
+          return;
+        }
+
+        setRoomCode(storedCode);
+        setClassId(storedClassId);
+        setClassName(storedClassName);
+        setStudentId(storedStudentId);
+      } catch (error) {
+        console.error("セッションデータの解析に失敗しました:", error);
+        setClassName("エラー: 不正なデータです");
+      }
+    }, 0); // 0ミリ秒遅延させることで同期的なsetState判定を回避
+
+    return () => clearTimeout(initSession);
+  }, []);
+
+  // クリックイベント：マスを開け閉めし、ポイントを「蓄積」する
   const handleCellClick = (id: number) => {
     if (id === 13) return;
-    setOpenedCells((prev) => ({ ...prev, [id]: !prev[id] }));
+    if (!classId || !studentId) return;
+
+    const isOpening = !openedCells[id];
+    // 1. 次のマス目の状態を作る
+    const nextOpened = { ...openedCells, [id]: isOpening };
+
+    // 2. その状態をもとに、ビンゴしているラインを計算する
+    const currentAchieved: number[] = [];
+    BINGO_LINES.forEach((line, index) => {
+      const isComplete = line.every((cellId) => cellId === 13 || !!nextOpened[cellId]);
+      if (isComplete) currentAchieved.push(index);
+    });
+
+    // 3. 過去のビンゴラインと比較して、新しくビンゴしたか確認する
+    const newlyDiscoveredLines = currentAchieved.filter(
+      (idx) => !achievedLineIndexes.includes(idx)
+    );
+
+    setOpenedCells(nextOpened);
+    setAchievedLineIndexes(currentAchieved);
+    // 新しいビンゴが見つかったら、アニメーションをONにする
+    if (newlyDiscoveredLines.length > 0) {
+      setShowAnimation(true);
+    }
+
+    // マスを開けた時だけポイントを「蓄積」する（まだ送信しない）
+    if (isOpening) {
+      let pointsToAdd = 10; // 1マス開けた基本ダメージ
+
+      if (newlyDiscoveredLines.length > 0) {
+        const linesCount = newlyDiscoveredLines.length;
+        pointsToAdd += linesCount === 1 ? 150 : linesCount * 250;
+      }
+
+      setAccumulatedPoints((prev) => prev + pointsToAdd);
+    }
+  };
+
+  // 蓄積したポイントを一気に送信する攻撃関数
+  const handleAttack = async () => {
+    if (accumulatedPoints <= 0 || !classId || !studentId || isAttacking) return;
+
+    setIsAttacking(true); // 連打防止
+
+    try {
+      // 蓄積されたポイントを一撃で送信
+      await supabase.rpc("apply_point_event", {
+        p_class_id: classId,
+        p_student_id: studentId,
+        p_card_id: null,
+        p_event_type: "bonus", // 一括攻撃は bonus イベントとして扱う
+        p_points: accumulatedPoints,
+      });
+
+      // 送信成功したら蓄積ポイントをゼロにリセット
+      setAccumulatedPoints(0);
+    } catch (error) {
+      console.error("攻撃の送信に失敗しました:", error);
+      alert("攻撃に失敗しました。もう一度お試しください。");
+    } finally {
+      setIsAttacking(false);
+    }
   };
 
   const gridCells = Array.from({ length: 25 }, (_, i) => i + 1);
   const openedCount = gridCells.filter((id) => id !== 13 && openedCells[id]).length;
 
-  const achievedLineIndexes = useMemo(() => {
-    return BINGO_LINES.reduce<number[]>((indexes, line, index) => {
-      const isComplete = line.every((id) => id === 13 || !!openedCells[id]);
-      if (isComplete) {
-        indexes.push(index);
-      }
-      return indexes;
-    }, []);
-  }, [openedCells]);
-
-  /*  1. ビンゴラインの変更（マスの開閉）だけを監視する処理*/
-  useEffect(() => {
-    const newlyDiscoveredLines = achievedLineIndexes.filter(
-      (idx) => !previousAchievedLineIndexes.current.includes(idx)
-    );
-
-    // 新しいビンゴを検知したら演出をON
-    if (newlyDiscoveredLines.length > 0) {
-      startTransition(() => {
-        setShowAnimation(true);
-      });
-    }
-
-    previousAchievedLineIndexes.current = achievedLineIndexes;
-  }, [achievedLineIndexes]);
-
-
-  /* 2. 演出フラグが ON になったら、1.2秒後に閉じるタイマー */
+  // 演出フラグが ON になったら、1.2秒後に閉じるタイマー
   useEffect(() => {
     if (!showAnimation) return;
-
-    const timer = setTimeout(() => {
-      setShowAnimation(false);
-    }, 1200);
-
+    const timer = setTimeout(() => setShowAnimation(false), 1200);
     return () => clearTimeout(timer);
   }, [showAnimation]);
-
 
   const bingoLinesCount = achievedLineIndexes.length;
 
@@ -84,7 +158,9 @@ export default function BingoPlayPage() {
       <div className="w-full bg-slate-900/60 border-b border-slate-800 p-4 sticky top-0 z-10 backdrop-blur flex justify-between items-center shadow-md">
         <div>
           <h1 className="text-base font-black text-slate-100 tracking-wide">{className} カード</h1>
-          <p className="text-[10px] text-slate-500 mt-0.5">条件達成で自動的に必殺技が発動！</p>
+          <p className="text-[10px] text-slate-500 mt-0.5">
+            {roomCode ? `コード: ${roomCode} の授業中` : "条件達成で自動的に必殺技が発動！"}
+          </p>
         </div>
         <div className="text-right font-mono">
           <span className="text-[9px] text-slate-500 font-bold block uppercase tracking-widest">Hit Matrix</span>
@@ -95,8 +171,42 @@ export default function BingoPlayPage() {
         </div>
       </div>
 
-      {/* ビンゴグリッドエリア */}
-      <div className="flex-1 max-w-md w-full mx-auto px-3 py-6 flex flex-col justify-center">
+      {/* メインエリア */}
+      <div className="flex-1 max-w-md w-full mx-auto px-3 py-6 flex flex-col justify-start space-y-5">
+        
+        {/* リアルタイムボスエリア */}
+        {classId ? (
+          <BossArea classId={classId} />
+        ) : (
+          <div className="w-full p-6 bg-slate-900/40 rounded-xl border border-slate-800 text-center text-xs text-slate-500 animate-pulse">
+            {className === "読み込み中..." ? "ボスを召喚中..." : "クラス情報が取得できません"}
+          </div>
+        )}
+
+        {/* 蓄積ポイントがある時だけ表示される攻撃ボタン */}
+        <div className="h-14 flex items-center justify-center">
+          {accumulatedPoints > 0 ? (
+            <button
+              onClick={handleAttack}
+              disabled={isAttacking}
+              className={`
+                w-full py-3 px-6 rounded-full font-black tracking-wider text-white shadow-lg transition-all duration-200
+                ${isAttacking 
+                  ? "bg-slate-600 cursor-not-allowed scale-95" 
+                  : "bg-gradient-to-r from-red-600 to-rose-500 hover:from-red-500 hover:to-rose-400 active:scale-95 shadow-[0_0_15px_rgba(225,29,72,0.5)] animate-pulse"
+                }
+              `}
+            >
+              {isAttacking ? "攻撃中..." : `💥 ${accumulatedPoints} PT 攻撃する！`}
+            </button>
+          ) : (
+            <p className="text-xs text-slate-500 font-mono tracking-widest text-center w-full">
+              - WAITING FOR ENERGY -
+            </p>
+          )}
+        </div>
+
+        {/* ビンゴグリッドエリア */}
         <div className="grid grid-cols-5 gap-2 w-full aspect-square">
           {gridCells.map((id) => {
             if (id === 13) {
@@ -130,7 +240,7 @@ export default function BingoPlayPage() {
         </div>
       </div>
 
-      {/* 1.2秒で「存在ごと」綺麗に消える演出レイヤー*/}
+      {/* 1.2秒で「存在ごと」綺麗に消える演出レイヤー */}
       {showAnimation && (
         /* pointer-events-none から z-50 にすることで、開いている時だけ最前面にし、消えたら跡形もなく消滅する */
         <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-md z-50 flex flex-col items-center justify-center p-4 animate-fadeIn transition-all duration-300">
