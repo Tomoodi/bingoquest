@@ -66,6 +66,7 @@ create table if not exists public.boss_states (
   name text not null default 'スライムキング',
   max_hp integer not null default 1000 check (max_hp > 0),
   current_hp integer not null default 1000 check (current_hp >= 0),
+  total_damage integer not null default 0,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   check (current_hp <= max_hp)
@@ -208,7 +209,8 @@ begin
   );
 
   update public.boss_states
-  set current_hp = greatest(0, current_hp - p_points)
+  set current_hp = greatest(0, current_hp - p_points),
+      total_damage = total_damage + p_points
   where class_id = p_class_id
   returning * into updated_boss;
 
@@ -340,7 +342,7 @@ set
   teacher_words = excluded.teacher_words;
 
 insert into public.boss_states (class_id, name, max_hp, current_hp)
-select id, 'スライムキング', 1000, 1000
+select id, 'スライムキング', 1000, 1000, 0
 from public.classes
 where code = '123456'
 on conflict (class_id) do nothing;

@@ -39,39 +39,26 @@ begin
     raise exception 'student does not belong to class';
   end if;
 
-  -- 未使用イベントをロックしつつ合計を算出（同時攻撃による二重消費を防ぐ）。
+  -- 未使用イベントを使用済みにしつつ、消費した合計を 1 文で算出する。
+  -- UPDATE が対象行をロックするため、同時攻撃による二重消費を防げる
+  -- （2 回目の攻撃は既に consumed のため 0 行となり合計 0 になる）。
+  with consumed as (
+    update public.point_events
+    set consumed_at = now()
+    where student_id = p_student_id
+      and class_id = p_class_id
+      and consumed_at is null
+    returning points
+  )
   select coalesce(sum(points), 0)
   into total_points
-  from public.point_events
-  where student_id = p_student_id
-    and class_id = p_class_id
-    and consumed_at is null
-  for update;
+  from consumed;
 
-  -- 貯蓄ポイントが無ければ現在のボス状態をそのまま返す。
-  if total_points <= 0 then
-    select *
-    into updated_boss
-    from public.boss_states
-    where class_id = p_class_id;
-
-    if not found then
-      raise exception 'boss_state not found for class';
-    end if;
-
-    return updated_boss;
-  end if;
-
-  -- 未使用イベントを使用済みにする。
-  update public.point_events
-  set consumed_at = now()
-  where student_id = p_student_id
-    and class_id = p_class_id
-    and consumed_at is null;
-
-  -- 合計分だけボス HP を減らす。
+  -- 合計分だけボス HP を減らし、総ダメージ（total_damage）も加算する
+  -- （合計 0 のときは実質変化なし）。
   update public.boss_states
-  set current_hp = greatest(0, current_hp - total_points)
+  set current_hp = greatest(0, current_hp - total_points),
+      total_damage = coalesce(total_damage, 0) + total_points
   where class_id = p_class_id
   returning * into updated_boss;
 

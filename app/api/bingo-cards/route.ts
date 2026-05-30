@@ -148,6 +148,23 @@ export async function GET(request: Request) {
     return jsonError(404, "CARD_NOT_FOUND", "ビンゴカードのマスが揃っていません。");
   }
 
+  // 初期表示用に、まだ攻撃に使っていない（consumed_at = null）ポイント合計を集計する。
+  const { data: pointRows, error: pointsError } = await supabaseServer
+    .from("point_events")
+    .select("points")
+    .eq("student_id", studentId)
+    .is("consumed_at", null);
+
+  if (pointsError) {
+    console.error("Failed to sum accumulated points:", pointsError);
+    return jsonError(500, "FETCH_FAILED", "ポイントの集計に失敗しました。");
+  }
+
+  const accumulatedPoints = (pointRows ?? []).reduce(
+    (total, row) => total + (row.points as number),
+    0
+  );
+
   return Response.json({
     card: {
       id: cardData.id,
@@ -160,6 +177,7 @@ export async function GET(request: Request) {
         openedAt: cell.opened_at,
       })),
     },
+    accumulatedPoints,
   });
 }
 
@@ -183,6 +201,17 @@ export async function POST(request: Request) {
 
   if (!cells) {
     return jsonError(400, "INVALID_CELLS", "ビンゴカードの入力内容が正しくありません。");
+  }
+
+  // FREEマス以外のマスの「テキスト（単語）」をランダムにシャッフルする
+  const normalCells = cells.filter((cell) => cell !== null && !cell.is_free);
+  
+  for (let i = normalCells.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    // normalCells[i] と normalCells[j] が存在することを ! で保証する
+    const tempText = normalCells[i]!.text;
+    normalCells[i]!.text = normalCells[j]!.text;
+    normalCells[j]!.text = tempText;
   }
 
   const { data: studentData, error: studentError } = await supabaseServer
