@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase/client";
 import BossArea from "@/components/BossArea";
+import { motion, AnimatePresence } from "framer-motion";
 
 type BingoQuestSession = {
   student: {
@@ -48,6 +49,13 @@ type ApiErrorResponse = {
   };
 };
 
+// バトルログの型定義
+type BattleLog = {
+  id: string;
+  message: string;
+  timestamp: number;
+};
+
 export default function BingoPlayPage() {
   const [openedCells, setOpenedCells] = useState<{ [key: number]: boolean }>({});
   const [showAnimation, setShowAnimation] = useState(false);
@@ -73,6 +81,11 @@ export default function BingoPlayPage() {
   // ボス撃破時のアニメーション管理用State
   const [showDefeatAnimation, setShowDefeatAnimation] = useState(false);
   const [hasDefeated, setHasDefeated] = useState(false);
+
+  // バトルログ、自分の名前、通信チャンネルの管理
+  const [battleLogs, setBattleLogs] = useState<BattleLog[]>([]);
+  const [studentName, setStudentName] = useState<string>("勇者");
+  const roomChannelRef = useRef<any>(null);
 
   // sessionStorage からコードを取得してクラス情報を読み込む処理 (setTimeoutで非同期化)
   useEffect(() => {
@@ -125,6 +138,43 @@ export default function BingoPlayPage() {
 
     return () => clearTimeout(initSession);
   }, []);
+
+  // 自分の名前を取得する
+  useEffect(() => {
+    if (!studentId) return;
+    supabase.from('students').select('name').eq('id', studentId).single().then(({ data }) => {
+      if (data) setStudentName(data.name);
+    });
+  }, [studentId]);
+
+  // クラス全員と繋がるリアルタイム通信のセットアップ
+  useEffect(() => {
+    if (!classId) return;
+    
+    // Broadcast機能を使って、クラス用の部屋（チャンネル）を作る
+    const channel = supabase.channel(`room-${classId}`, {
+      config: { broadcast: { self: true } } // 自分の送信も受信する
+    });
+
+    channel.on('broadcast', { event: 'attack' }, ({ payload }) => {
+      // 誰かが攻撃したというメッセージを受信したらログに追加
+      const newLog = {
+        id: Date.now().toString() + Math.random(),
+        message: `${payload.name} が ${payload.damage} ダメージを与えた！💥`,
+        timestamp: Date.now()
+      };
+      setBattleLogs(prev => [...prev, newLog]);
+
+      // 4秒後に自動で消す
+      setTimeout(() => {
+        setBattleLogs(prev => prev.filter(log => log.id !== newLog.id));
+      }, 4000);
+    }).subscribe();
+
+    roomChannelRef.current = channel;
+
+    return () => { supabase.removeChannel(channel); };
+  }, [classId]);
 
   // ボスの撃破（HPが0になった瞬間）を監視する処理
   useEffect(() => {
@@ -294,6 +344,9 @@ export default function BingoPlayPage() {
     if (accumulatedPoints <= 0 || !classId || !studentId || isAttacking) return;
 
     setIsAttacking(true); // 連打防止
+    // 先にポイント数を記録しておく（0にリセットされる前に）
+    const damageToDealt = accumulatedPoints;
+
     try {
       const response = await fetch("/api/attack", {
         method: "POST",
@@ -306,6 +359,15 @@ export default function BingoPlayPage() {
         const message = data.error?.message ?? "攻撃に失敗しました。";
         alert(message);
         return;
+      }
+
+      // 攻撃成功時に、クラス全員に「自分が攻撃したぞ！」とブロードキャスト送信する
+      if (roomChannelRef.current) {
+        roomChannelRef.current.send({
+          type: 'broadcast',
+          event: 'attack',
+          payload: { name: studentName, damage: damageToDealt }
+        });
       }
 
       // 消費済みなので貯蓄ポイントは 0。ボス HP は BossArea が Realtime で反映する。
@@ -332,6 +394,23 @@ export default function BingoPlayPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-950 text-white font-sans relative overflow-hidden">
+      {/* リアルタイム・バトルログ（右下からフワッと出てくる） */}
+      <div className="fixed bottom-6 right-4 z-50 flex flex-col items-end gap-2 pointer-events-none">
+        <AnimatePresence>
+          {battleLogs.map((log) => (
+            <motion.div
+              key={log.id}
+              initial={{ opacity: 0, x: 50, scale: 0.9 }}
+              animate={{ opacity: 1, x: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -20, scale: 0.8 }}
+              transition={{ duration: 0.3 }}
+              className="bg-slate-900/90 border-l-4 border-emerald-500 text-white text-xs md:text-sm px-4 py-2 rounded shadow-[0_0_15px_rgba(16,185,129,0.3)] backdrop-blur-sm font-bold tracking-wide"
+            >
+              {log.message}
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
 
       {/* ボス撃破時の全画面アニメーションレイヤー */}
       {showDefeatAnimation && (
