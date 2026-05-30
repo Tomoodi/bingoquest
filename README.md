@@ -1,36 +1,127 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# BINGO QUEST
 
-## Getting Started
+「予習」と「授業の集中力」をゲーム感覚で同時にハックするビンゴアプリです。
 
-First, run the development server:
+授業前に「授業で出てきそうなキーワード」や「先生が話しそうな内容」を予想してビンゴカードを作成し、授業中に実際に出てきたらマスを開けます。マス開放・リーチ・ビンゴでポイントを獲得し、クラス全体で1体のボスを攻撃することで、授業への集中と参加感を高めることを目指します。
+
+## 要件定義
+
+### プロジェクト概要
+
+| 項目 | 内容 |
+| --- | --- |
+| コンセプト | 「予習」と「授業の集中力」をゲーム感覚で同時にハックするビンゴアプリ |
+| 目的 | 授業前に起きそうな出来事や重要キーワードを予想してビンゴカードを作成する過程で自然な予習を促し、授業中はビンゴ達成を目指すことで授業に集中する状態を作る |
+| ターゲット | 授業に退屈しがちな学生、予習のモチベーションが湧かない学生 |
+| 方針 | まずは生徒側のシンプルなビンゴ体験を最優先で実装し、先生側・クイズ・AI連携などは段階的に追加する |
+
+### 利用シナリオ
+
+1. 【授業前】生徒がアプリを開き、氏名とクラスコードで参加する。
+2. 【授業前】次の授業のテーマに合わせて、出てきそうなキーワードや出来事を入力し、自分だけの5x5ビンゴカードを作成する。
+3. 【授業中】授業中に予想した内容が出てきたら、生徒が自己申告で該当マスをタップして開ける。
+4. 【達成】タテ・ヨコ・ナナメのいずれかが揃うと「BINGO!」の演出が表示される。
+5. 【バトル】マス開放・リーチ・ビンゴに応じてポイントを獲得し、クラス全体で共有されるボスに攻撃する。
+
+## MVPで実装する内容
+
+MVPでは、リリーススピードを優先し、生徒側の基本体験に絞って実装します。トラップ問題、先生向け管理画面、AI生成などは含めません。
+
+### 機能要件
+
+| 機能名 | MVPでの仕様 |
+| --- | --- |
+| 生徒ログイン | 生徒は氏名と6桁のクラスコードを入力してクラスに参加する。認証は手軽さを優先し、本格的なアカウント登録は行わない。 |
+| クラス参加 | MVPでは事前にDBへ登録されたテスト用クラスコードを利用する。先生によるクラス作成画面は実装しない。 |
+| ビンゴカード作成 | 生徒が24個の予想内容を入力し、中央FREEマスを含む5x5のビンゴカードを作成する。 |
+| 入力例による誘導 | プレースホルダーや補助文で「教科書に出てきそうな単語」「先生が説明しそうな重要語句」などを示し、授業内容に寄った入力を促す。 |
+| マス開放 | 予想した内容が授業中に出てきたら、生徒が自己申告でマスをタップして達成済みにする。 |
+| ビンゴ判定 | タテ・ヨコ・ナナメのラインが揃ったかを判定する。 |
+| ビンゴ演出 | ビンゴ達成時に「BINGO!」のポップアップまたはアニメーションを表示する。 |
+| ポイント獲得 | マスを1つ開ける、リーチする、ビンゴするなどのイベントに応じてポイントを付与する。 |
+| リアルタイムボスバトル | 同じクラスの生徒が獲得したポイントで、共有ボスのHPをリアルタイムに減らす。 |
+| レスポンシブUI | スマートフォン・タブレットでの利用を主軸にしつつ、PC表示も最低限崩れないようにする。 |
+
+### MVPではやらないこと
+
+| 項目 | 理由・扱い |
+| --- | --- |
+| 先生向け管理画面 | まずは生徒側のビンゴ体験を優先するため、MVP後に実装する。 |
+| クラスコード作成画面 | MVPではDBにテストデータを用意して代替する。 |
+| トラップ問題 | 生徒入力のマスと先生作成問題の整合性、実装コストを考慮し、MVPでは実装しない。 |
+| ダミーマス | 確実に開かないマスは運要素が強く理不尽になりやすいため、MVPでは実装しない。 |
+| 厳密な的中判定 | 授業中の発言・行動をシステムが判定する仕組みはコストが高いため、MVPでは自己申告ベースにする。 |
+| 復習クイズ・授業後バトル | 面白い拡張案だが、まずは授業中のリアルタイム協力バトルを優先する。 |
+| AIキーワード生成 | Gemini API連携はMVP後の改善案として扱う。 |
+
+## MVP後に実装を検討する内容
+
+### 先生・管理者向け機能
+
+| 機能名 | 詳細 |
+| --- | --- |
+| 管理者ログイン | 先生が管理画面にログインできる。 |
+| クラスコード作成 | クラス名・学年組を入力し、6桁のクラスコードを発行する。先生はこのコードを生徒に共有する。 |
+| クラス管理 | 参加生徒、ボスHP、ポイント状況などを確認できる。 |
+| 授業テーマ設定 | 先生が授業テーマや単元名を設定し、生徒の入力を授業内容に誘導する。 |
+
+### ゲーム性の拡張
+
+| 機能名 | 詳細 |
+| --- | --- |
+| トラップ問題 | 一部のマスを開けようとしたときに突発イベントとして問題を出題し、正解するとマスを開けられる。 |
+| チャレンジマス | ダミーマスの代替として、先生またはAIが生成した高難易度の問題マスを用意する。 |
+| 復習クイズ | 授業後や休み時間に復習クイズを出題し、正解するとボスに大ダメージを与える。 |
+| 授業後バトル | 授業中に貯めたポイントを使い、休み時間にクラス全員で一斉にボスへ攻撃するモードを検討する。 |
+| ボス・演出強化 | RPG風のボス画像、攻撃エフェクト、HPバー、レベルアップなどを追加する。 |
+| ランキング・称号 | 個人またはクラス単位の貢献度、称号、実績を表示する。 |
+
+### 学習体験の改善
+
+| 機能名 | 詳細 |
+| --- | --- |
+| 先生作成キーワード | 先生が一部のキーワード候補を用意し、生徒がカード作成時に参考にできる。 |
+| AIキーワード候補生成 | 授業テーマや教科書範囲をもとに、Gemini APIでビンゴ用キーワード候補を生成する。 |
+| 入力内容の制限・分類 | 完全自由入力を残しつつ、重要語句・先生の口癖・授業イベントなどのカテゴリ分けを検討する。 |
+| 的中判定の改善 | 将来的には先生側からの承認、共通キーワードの一括開放、授業音声解析などの可能性を検討する。 |
+
+## 非機能要件
+
+| 項目 | 内容 |
+| --- | --- |
+| レスポンシブ対応 | 授業中に机の上で操作しやすいよう、スマートフォン・タブレットを前提としたモバイルファーストUIにする。PC表示も考慮する。 |
+| リアルタイム性 | 誰かがボスを攻撃したとき、他の生徒の画面にもリロードなしで反映される。 |
+| ゲーミフィケーションUI | RPGゲーム風のUIを意識し、ボスバトル・HP・攻撃演出などで遊び心を出す。 |
+| 操作の手軽さ | 授業中に使うため、ログイン・カード作成・マス開放の操作はできるだけ少ない手数にする。 |
+| 実装の段階性 | MVPではシンプルに動くことを優先し、複雑な判定ロジックや管理機能は段階的に追加する。 |
+
+## 技術スタック
+
+| 領域 | 使用技術 |
+| --- | --- |
+| インフラ / デプロイ | Vercel |
+| フロントエンド | Next.js App Router, TypeScript |
+| UI | Tailwind CSS, shadcn/ui |
+| バックエンド / DB | Supabase PostgreSQL, Auth, Realtime, Storage |
+| API層 | Next.js Route Handlers |
+| AI連携 | Google Gemini API |
+
+## 開発セットアップ
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Run the development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) with your browser.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Setup Docs
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- [Supabase setup](./docs/supabase-setup.md)
