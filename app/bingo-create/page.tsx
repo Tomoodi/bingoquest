@@ -1,9 +1,51 @@
 "use client";
 
-import React, { useState } from "react";
+import { useRouter } from "next/navigation";
+import React, { startTransition, useEffect, useState } from "react";
+
+type BingoQuestSession = {
+  student: {
+    id: string;
+    name: string;
+  };
+  class: {
+    id: string;
+    code: string;
+    name: string;
+    gradeSection: string | null;
+    lessonTheme: string | null;
+    lessonDescription: string | null;
+  };
+};
+
+const SESSION_STORAGE_KEY = "bingoQuestSession";
 
 export default function BingoCreatePage() {
+  const router = useRouter();
+  const [session, setSession] = useState<BingoQuestSession | null>(null);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [inputs, setInputs] = useState<{ [key: number]: string }>({});
+
+  useEffect(() => {
+    const storedSession = sessionStorage.getItem(SESSION_STORAGE_KEY);
+
+    if (!storedSession) {
+      router.replace("/");
+      return;
+    }
+
+    try {
+      const parsedSession = JSON.parse(storedSession) as BingoQuestSession;
+      startTransition(() => {
+        setSession(parsedSession);
+        setIsCheckingSession(false);
+      });
+    } catch {
+      sessionStorage.removeItem(SESSION_STORAGE_KEY);
+      router.replace("/");
+      return;
+    }
+  }, [router]);
 
   // 教科書内容をメインに、遊び要素を数マスだけに絞ったプレースホルダー
   const placeholders: { [key: number]: string } = {
@@ -48,6 +90,16 @@ export default function BingoCreatePage() {
     (id) => id !== 13 && inputs[id] && inputs[id].trim() !== ""
   ).length;
 
+  if (isCheckingSession) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-950 px-4 text-white">
+        <p className="text-sm font-bold tracking-widest text-slate-500">
+          LOADING...
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-screen flex-col bg-slate-950 text-white font-sans">
       
@@ -68,6 +120,33 @@ export default function BingoCreatePage() {
 
       {/* 📝 メインコンテンツ */}
       <div className="flex-1 max-w-md w-full mx-auto px-3 py-6 flex flex-col justify-between space-y-6">
+        {session ? (
+          <section className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-amber-400">
+                  Lesson
+                </p>
+                <h2 className="mt-1 text-base font-black leading-tight text-amber-100">
+                  {session.class.lessonTheme || "授業テーマ未設定"}
+                </h2>
+              </div>
+              <div className="shrink-0 text-right">
+                <p className="text-[10px] font-bold tracking-widest text-slate-500">
+                  {session.class.code}
+                </p>
+                <p className="mt-1 text-xs font-bold text-slate-300">
+                  {session.student.name}
+                </p>
+              </div>
+            </div>
+            {session.class.lessonDescription ? (
+              <p className="mt-3 text-xs leading-relaxed text-slate-300">
+                {session.class.lessonDescription}
+              </p>
+            ) : null}
+          </section>
+        ) : null}
         
         {/* ヒントメッセージ（教科書推しに文言も変更！） */}
         <div className="bg-slate-900/30 border border-slate-800/80 rounded-xl p-3.5 text-xs text-slate-400 leading-relaxed">
