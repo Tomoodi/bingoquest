@@ -33,6 +33,7 @@ create table if not exists public.classes (
   class_section text,
   lesson_theme text,
   lesson_description text,
+  teacher_words text[],
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -42,7 +43,8 @@ alter table public.classes
   add column if not exists grade text,
   add column if not exists class_section text,
   add column if not exists lesson_theme text,
-  add column if not exists lesson_description text;
+  add column if not exists lesson_description text,
+  add column if not exists teacher_words text[];
 
 alter table public.classes
   drop column if exists grade_section;
