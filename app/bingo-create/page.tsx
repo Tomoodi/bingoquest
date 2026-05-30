@@ -51,7 +51,7 @@ export default function BingoCreatePage() {
   return (
     <div className="flex min-h-screen flex-col bg-slate-950 text-white font-sans">
       
-      {/* 🔮 ヘッダーエリア */}
+      {/* ヘッダーエリア */}
       <div className="w-full bg-slate-900/40 border-b border-slate-800 p-5 sticky top-0 z-10 backdrop-blur">
         <div className="max-w-md mx-auto flex justify-between items-center">
           <div>
@@ -66,7 +66,7 @@ export default function BingoCreatePage() {
         </div>
       </div>
 
-      {/* 📝 メインコンテンツ */}
+      {/* メインコンテンツ */}
       <div className="flex-1 max-w-md w-full mx-auto px-3 py-6 flex flex-col justify-between space-y-6">
         
         {/* ヒントメッセージ（教科書推しに文言も変更！） */}
