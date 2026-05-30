@@ -43,6 +43,7 @@ create table if not exists public.bingo_cards (
   student_id uuid not null references public.students(id) on delete cascade,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
+  student_words text[],
   unique (student_id, class_id)
 );
 
@@ -277,7 +278,8 @@ insert into public.classes (
   name,
   grade_section,
   lesson_theme,
-  lesson_description
+  lesson_description,
+  teacherWords[]
 )
 values (
   '123456',
