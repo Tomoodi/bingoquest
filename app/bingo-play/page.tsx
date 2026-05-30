@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabase/client";
+import BossArea from "@/components/BossArea";
 
 // 全12パターンのビンゴライン定数（5x5のマスID配列）
 const BINGO_LINES = [
@@ -13,8 +15,9 @@ export default function BingoPlayPage() {
   const [openedCells, setOpenedCells] = useState<{ [key: number]: boolean }>({});
   const [showAnimation, setShowAnimation] = useState(false);
   const [achievedLineIndexes, setAchievedLineIndexes] = useState<number[]>([]);
-
-  const className = "ビンゴ";
+  const [classId, setClassId] = useState<string | null>(null);
+  const [className, setClassName] = useState<string>("読み込み中...");
+  const [roomCode, setRoomCode] = useState<string>("");
 
   const myBingoData: { [key: number]: string } = {
     1: "三平方の定理 (a²+b²=c²)", 2: "因数分解の公式", 3: "解の公式のルートの中身",
@@ -26,6 +29,35 @@ export default function BingoPlayPage() {
     20: "黒板の右端に小さく計算メモ", 21: "先生が「えーっと」と言う", 22: "先生の「ここまで大丈夫？」",
     23: "デカい木製三角定規が登場", 24: "出席番号の下1桁で当てられる", 25: "チャイムと同時に板書終了",
   };
+
+  // sessionStorage からコードを取得してクラス情報を読み込む処理
+  useEffect(() => {
+    const storedCode = sessionStorage.getItem("roomCode");
+
+    if (!storedCode) {
+      setClassName("エラー: コードなし");
+      return;
+    }
+
+    setRoomCode(storedCode);
+
+    async function fetchClassData() {
+      const { data, error } = await supabase
+        .from("classes")
+        .select("id, name")
+        .eq("code", storedCode)
+        .single();
+      
+      if (data) {
+        setClassId(data.id);
+        setClassName(data.name);
+      } else if (error) {
+        setClassName("存在しないクラスです");
+      }
+    }
+    
+    fetchClassData();
+  }, []);
 
   // type="button" を追加して勝手なリロードを完全に防いだクリック関数
   const handleCellClick = (id: number) => {
@@ -81,7 +113,9 @@ export default function BingoPlayPage() {
       <div className="w-full bg-slate-900/60 border-b border-slate-800 p-4 sticky top-0 z-10 backdrop-blur flex justify-between items-center shadow-md">
         <div>
           <h1 className="text-base font-black text-slate-100 tracking-wide">{className} カード</h1>
-          <p className="text-[10px] text-slate-500 mt-0.5">条件達成で自動的に必殺技が発動！</p>
+          <p className="text-[10px] text-slate-500 mt-0.5">
+            {roomCode ? `コード: ${roomCode} の授業中` : "条件達成で自動的に必殺技が発動！"}
+          </p>
         </div>
         <div className="text-right font-mono">
           <span className="text-[9px] text-slate-500 font-bold block uppercase tracking-widest">Hit Matrix</span>
@@ -92,8 +126,19 @@ export default function BingoPlayPage() {
         </div>
       </div>
 
-      {/* ビンゴグリッドエリア */}
-      <div className="flex-1 max-w-md w-full mx-auto px-3 py-6 flex flex-col justify-center">
+      {/* メインエリア */}
+      <div className="flex-1 max-w-md w-full mx-auto px-3 py-6 flex flex-col justify-start space-y-6">
+        
+        {/* リアルタイムボスエリア */}
+        {classId ? (
+          <BossArea classId={classId} />
+        ) : (
+          <div className="w-full p-6 bg-slate-900/40 rounded-xl border border-slate-800 text-center text-xs text-slate-500 animate-pulse">
+            {className === "読み込み中..." ? "ボスを召喚中..." : "クラス情報が取得できません"}
+          </div>
+        )}
+
+        {/* ビンゴグリッドエリア */}
         <div className="grid grid-cols-5 gap-2 w-full aspect-square">
           {gridCells.map((id) => {
             if (id === 13) {
