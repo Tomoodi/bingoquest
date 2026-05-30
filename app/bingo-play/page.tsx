@@ -11,29 +11,58 @@ const BINGO_LINES = [
   [1, 7, 13, 19, 25], [5, 9, 13, 17, 21] // 斜め
 ];
 
+type BingoQuestSession = {
+  student: {
+    id: string;
+  };
+  class: {
+    id: string;
+    code: string;
+    name: string;
+  };
+  bingoCard?: {
+    id: string;
+  };
+};
+
+type BingoCell = {
+  id: string;
+  position: number;
+  text: string;
+  isFree: boolean;
+  isOpened: boolean;
+  openedAt: string | null;
+};
+
+type BingoCardResponse = {
+  card: {
+    id: string;
+    cells: BingoCell[];
+  };
+};
+
+type BingoCardErrorResponse = {
+  error?: {
+    message?: string;
+  };
+};
+
 export default function BingoPlayPage() {
   const [openedCells, setOpenedCells] = useState<{ [key: number]: boolean }>({});
   const [showAnimation, setShowAnimation] = useState(false);
   const [achievedLineIndexes, setAchievedLineIndexes] = useState<number[]>([]);
   const [classId, setClassId] = useState<string | null>(null);
   const [studentId, setStudentId] = useState<string | null>(null);
+  const [cardId, setCardId] = useState<string | null>(null);
   const [className, setClassName] = useState<string>("読み込み中...");
   const [roomCode, setRoomCode] = useState<string>("");
+  const [bingoCells, setBingoCells] = useState<{ [key: number]: BingoCell }>({});
+  const [isLoadingCard, setIsLoadingCard] = useState(true);
+  const [cardErrorMessage, setCardErrorMessage] = useState("");
 
   // 蓄積された攻撃ポイントを管理するState
   const [accumulatedPoints, setAccumulatedPoints] = useState<number>(0);
   const [isAttacking, setIsAttacking] = useState(false); // 連打防止用
-
-  const myBingoData: { [key: number]: string } = {
-    1: "三平方の定理 (a²+b²=c²)", 2: "因数分解の公式", 3: "解の公式のルートの中身",
-    4: "教科書45ページの例題1", 5: "二次関数のグラフの頂点", 6: "相似比（1:2など）の計算",
-    7: "三角比（sin/cos/tan）", 8: "計算ミスしやすい符号の罠", 9: "証明問題の「よって〜」",
-    10: "平行線と錯角の性質", 11: "連立方程式の文章題", 12: "判別式 D > 0 の条件",
-    14: "前回の宿題の答え合わせ", 15: "新単語「分散・標準偏差」", 16: "教科書のチャレンジ問題",
-    17: "授業最後の振り返り問題", 18: "先生の「ここテストに出る」", 19: "黒板に赤チョークで二重線",
-    20: "黒板の右端に小さく計算メモ", 21: "先生が「えーっと」と言う", 22: "先生の「ここまで大丈夫？」",
-    23: "デカい木製三角定規が登場", 24: "出席番号の下1桁で当てられる", 25: "チャイムと同時に板書終了",
-  };
 
   // sessionStorage からコードを取得してクラス情報を読み込む処理 (setTimeoutで非同期化)
   useEffect(() => {
@@ -42,20 +71,25 @@ export default function BingoPlayPage() {
 
       if (!sessionStr) {
         setClassName("エラー: ログイン情報がありません");
+        setCardErrorMessage("ログイン情報がありません。もう一度ログインしてください。");
+        setIsLoadingCard(false);
         return;
       }
 
       try {
         // JSON文字列をオブジェクトに変換
-        const sessionData = JSON.parse(sessionStr);
+        const sessionData = JSON.parse(sessionStr) as BingoQuestSession;
         // sessionData.class.code に "123456" などのコードが入っている
         const storedCode = sessionData.class.code;
         const storedClassId = sessionData.class.id;
         const storedClassName = sessionData.class.name;
         const storedStudentId = sessionData.student.id;
+        const storedCardId = sessionData.bingoCard?.id;
 
-        if (!storedCode || !storedStudentId) {
+        if (!storedCode || !storedClassId || !storedStudentId) {
           setClassName("エラー: ログイン情報が不完全です");
+          setCardErrorMessage("ログイン情報が不完全です。もう一度ログインしてください。");
+          setIsLoadingCard(false);
           return;
         }
 
@@ -63,19 +97,99 @@ export default function BingoPlayPage() {
         setClassId(storedClassId);
         setClassName(storedClassName);
         setStudentId(storedStudentId);
+
+        if (!storedCardId) {
+          setCardErrorMessage("ビンゴカードがまだ作成されていません。");
+          setIsLoadingCard(false);
+          return;
+        }
+
+        setCardId(storedCardId);
       } catch (error) {
         console.error("セッションデータの解析に失敗しました:", error);
         setClassName("エラー: 不正なデータです");
+        setCardErrorMessage("ログイン情報を読み込めませんでした。もう一度ログインしてください。");
+        setIsLoadingCard(false);
       }
     }, 0); // 0ミリ秒遅延させることで同期的なsetState判定を回避
 
     return () => clearTimeout(initSession);
   }, []);
 
+  useEffect(() => {
+    if (!classId || !studentId || !cardId) {
+      return;
+    }
+
+    const fetchBingoCard = async () => {
+      setIsLoadingCard(true);
+      setCardErrorMessage("");
+
+      try {
+        const params = new URLSearchParams({
+          cardId,
+          classId,
+          studentId,
+        });
+        const response = await fetch(`/api/bingo-cards?${params.toString()}`);
+        const data = (await response.json()) as
+          | BingoCardResponse
+          | BingoCardErrorResponse;
+
+        if (!response.ok) {
+          const message =
+            "error" in data && data.error?.message
+              ? data.error.message
+              : "ビンゴカードを読み込めませんでした。";
+          setCardErrorMessage(message);
+          return;
+        }
+
+        const successData = data as BingoCardResponse;
+        const cellsById = successData.card.cells.reduce<{
+          [key: number]: BingoCell;
+        }>((acc, cell) => {
+          acc[cell.position + 1] = cell;
+          return acc;
+        }, {});
+        const nextOpenedCells = successData.card.cells.reduce<{
+          [key: number]: boolean;
+        }>((acc, cell) => {
+          acc[cell.position + 1] = cell.isOpened || cell.isFree;
+          return acc;
+        }, {});
+        const currentAchieved = BINGO_LINES.reduce<number[]>(
+          (indexes, line, index) => {
+            const isComplete = line.every(
+              (cellId) => cellId === 13 || !!nextOpenedCells[cellId]
+            );
+            if (isComplete) {
+              indexes.push(index);
+            }
+            return indexes;
+          },
+          []
+        );
+
+        setBingoCells(cellsById);
+        setOpenedCells(nextOpenedCells);
+        setAchievedLineIndexes(currentAchieved);
+      } catch (error) {
+        console.error("ビンゴカードの取得に失敗しました:", error);
+        setCardErrorMessage("通信に失敗しました。時間をおいてもう一度お試しください。");
+      } finally {
+        setIsLoadingCard(false);
+      }
+    };
+
+    fetchBingoCard();
+  }, [cardId, classId, studentId]);
+
   // クリックイベント：マスを開け閉めし、ポイントを「蓄積」する
   const handleCellClick = (id: number) => {
     if (id === 13) return;
-    if (!classId || !studentId) return;
+    if (!classId || !studentId || isLoadingCard || cardErrorMessage) return;
+    if (!bingoCells[id]) return;
 
     const isOpening = !openedCells[id];
     // 1. 次のマス目の状態を作る
@@ -124,7 +238,7 @@ export default function BingoPlayPage() {
       await supabase.rpc("apply_point_event", {
         p_class_id: classId,
         p_student_id: studentId,
-        p_card_id: null,
+        p_card_id: cardId,
         p_event_type: "bonus", // 一括攻撃は bonus イベントとして扱う
         p_points: accumulatedPoints,
       });
@@ -206,6 +320,12 @@ export default function BingoPlayPage() {
           )}
         </div>
 
+        {cardErrorMessage ? (
+          <div className="rounded-xl border border-red-500/30 bg-red-950/30 px-4 py-3 text-sm font-bold leading-relaxed text-red-200">
+            {cardErrorMessage}
+          </div>
+        ) : null}
+
         {/* ビンゴグリッドエリア */}
         <div className="grid grid-cols-5 gap-2 w-full aspect-square">
           {gridCells.map((id) => {
@@ -217,6 +337,7 @@ export default function BingoPlayPage() {
               );
             }
 
+            const cell = bingoCells[id];
             const isOpened = !!openedCells[id];
 
             return (
@@ -233,7 +354,9 @@ export default function BingoPlayPage() {
                 `}
               >
                 <span className={`absolute top-1 left-1.5 font-mono text-[8px] ${isOpened ? "text-emerald-500/60" : "text-slate-700"}`}>{id > 13 ? id - 1 : id}</span>
-                <span className="text-[9px] leading-tight font-bold break-all px-0.5">{myBingoData[id]}</span>
+                <span className="text-[9px] leading-tight font-bold break-all px-0.5">
+                  {isLoadingCard ? "読み込み中..." : cell?.text ?? ""}
+                </span>
               </button>
             );
           })}
