@@ -1,102 +1,105 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+
+// 全12パターンのビンゴライン定数（5x5のマスID配列）
+const BINGO_LINES = [
+  [1, 2, 3, 4, 5], [6, 7, 8, 9, 10], [11, 12, 13, 14, 15], [16, 17, 18, 19, 20], [21, 22, 23, 24, 25], // 横
+  [1, 6, 11, 16, 21], [2, 7, 12, 17, 22], [3, 8, 13, 18, 23], [4, 9, 14, 19, 24], [5, 10, 15, 20, 25], // 縦
+  [1, 7, 13, 19, 25], [5, 9, 13, 17, 21] // 斜め
+];
 
 export default function BingoPlayPage() {
-  // 🗺️ 各マスの「開いている（true） / 閉じている（false）」だけを管理するシンプルな状態
   const [openedCells, setOpenedCells] = useState<{ [key: number]: boolean }>({});
-  
-  // 課目名（モックデータ）
-  const className = "";
+  const [showAnimation, setShowAnimation] = useState(false);
+  const [achievedLineIndexes, setAchievedLineIndexes] = useState<number[]>([]);
 
-  // 📝 事前にユーザーが入力した24マスの単語データ
+  const className = "ビンゴ";
+
   const myBingoData: { [key: number]: string } = {
-    1: "三平方の定理 (a²+b²=c²)",
-    2: "因数分解の公式",
-    3: "解の公式のルートの中身",
-    4: "教科書45ページの例題1",
-    5: "二次関数のグラフの頂点",
-    6: "相似比（1:2など）の計算",
-    7: "三角比（sin/cos/tan）",
-    8: "計算ミスしやすい符号の罠",
-    9: "証明問題の「よって〜」",
-    10: "平行線と錯角の性質",
-    11: "連立方程式の文章題",
-    12: "判別式 D > 0 の条件",
-    14: "前回の宿題の答え合わせ",
-    15: "新単語「分散・標準偏差」",
-    16: "教科書のチャレンジ問題",
-    17: "授業最後の振り返り問題",
-    18: "先生の「ここテストに出る」",
-    19: "黒板に赤チョークで二重線",
-    20: "黒板の右端に小さく計算メモ",
-    21: "先生が「えーっと」と言う",
-    22: "先生の「ここまで大丈夫？」",
-    23: "デカい木製三角定規が登場",
-    24: "出席番号の下1桁で当てられる",
-    25: "チャイムと同時に板書終了",
+    1: "三平方の定理 (a²+b²=c²)", 2: "因数分解の公式", 3: "解の公式のルートの中身",
+    4: "教科書45ページの例題1", 5: "二次関数のグラフの頂点", 6: "相似比（1:2など）の計算",
+    7: "三角比（sin/cos/tan）", 8: "計算ミスしやすい符号の罠", 9: "証明問題の「よって〜」",
+    10: "平行線と錯角の性質", 11: "連立方程式の文章題", 12: "判別式 D > 0 の条件",
+    14: "前回の宿題の答え合わせ", 15: "新単語「分散・標準偏差」", 16: "教科書のチャレンジ問題",
+    17: "授業最後の振り返り問題", 18: "先生の「ここテストに出る」", 19: "黒板に赤チョークで二重線",
+    20: "黒板の右端に小さく計算メモ", 21: "先生が「えーっと」と言う", 22: "先生の「ここまで大丈夫？」",
+    23: "デカい木製三角定規が登場", 24: "出席番号の下1桁で当てられる", 25: "チャイムと同時に板書終了",
   };
 
-  // タップでフラグを反転させるだけの純粋なトグル関数
+  // type="button" を追加して勝手なリロードを完全に防いだクリック関数
   const handleCellClick = (id: number) => {
-    if (id === 13) return; // FREEマスは操作無効
-    
-    setOpenedCells((prev) => ({
-      ...prev,
-      [id]: !prev[id], // true ⇄ false を切り替える
-    }));
+    if (id === 13) return;
+    setOpenedCells((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  // 1〜25のインデックス配列
   const gridCells = Array.from({ length: 25 }, (_, i) => i + 1);
+  const openedCount = gridCells.filter((id) => id !== 13 && openedCells[id]).length;
 
-  // 開いたマスの合計数（FREEを除く）
-  const openedCount = gridCells.filter(
-    (id) => id !== 13 && openedCells[id] === true
-  ).length;
+  /*  1. ビンゴラインの変更（マスの開閉）だけを監視する処理*/
+  useEffect(() => {
+    const newAchievedIndexes: number[] = [];
+
+    BINGO_LINES.forEach((line, index) => {
+      const isComplete = line.every((id) => id === 13 || !!openedCells[id]);
+      if (isComplete) {
+        newAchievedIndexes.push(index);
+      }
+    });
+
+    const newlyDiscoveredLines = newAchievedIndexes.filter(
+      (idx) => !achievedLineIndexes.includes(idx)
+    );
+
+    // 新しいビンゴを検知したら演出をON
+    if (newlyDiscoveredLines.length > 0) {
+      setShowAnimation(true);
+    }
+
+    setAchievedLineIndexes(newAchievedIndexes);
+  }, [openedCells]);
+
+
+  /* 2. 演出フラグが ON になったら、1.2秒後に閉じるタイマー */
+  useEffect(() => {
+    if (!showAnimation) return;
+
+    const timer = setTimeout(() => {
+      setShowAnimation(false);
+    }, 1200);
+
+    return () => clearTimeout(timer);
+  }, [showAnimation]);
+
+
+  const bingoLinesCount = achievedLineIndexes.length;
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-950 text-white font-sans selection:bg-emerald-500/20">
+    <div className="flex min-h-screen flex-col bg-slate-950 text-white font-sans relative overflow-hidden">
       
-      {/* 上部ヘッダー：現在の開いた数だけをスタイリッシュに表示 */}
-      <div className="w-full bg-slate-900/60 border-b border-slate-800 p-4 sticky top-0 z-10 backdrop-blur flex justify-between items-center shadow-lg">
+      {/* 上部ヘッダー */}
+      <div className="w-full bg-slate-900/60 border-b border-slate-800 p-4 sticky top-0 z-10 backdrop-blur flex justify-between items-center shadow-md">
         <div>
-          <h1 className="text-base font-black text-slate-100 tracking-wide">
-            {className} ビンゴカード
-          </h1>
-          <p className="text-[10px] text-slate-500 mt-0.5">
-            授業中にキーワードが出たらタップ！
-          </p>
+          <h1 className="text-base font-black text-slate-100 tracking-wide">{className} カード</h1>
+          <p className="text-[10px] text-slate-500 mt-0.5">条件達成で自動的に必殺技が発動！</p>
         </div>
-        
-        {/* 開封カウンター */}
         <div className="text-right font-mono">
-          <span className="text-[9px] text-slate-500 font-bold block uppercase tracking-widest">Opened</span>
+          <span className="text-[9px] text-slate-500 font-bold block uppercase tracking-widest">Hit Matrix</span>
           <div className="flex items-baseline justify-end gap-0.5">
-            <span className="text-2xl font-black text-emerald-400 drop-shadow-[0_0_8px_rgba(16,185,129,0.3)]">
-              {openedCount}
-            </span>
+            <span className="text-2xl font-black text-emerald-400">{openedCount}</span>
             <span className="text-xs text-slate-600"> / 24</span>
           </div>
         </div>
       </div>
 
-      {/* メイン：ビンゴグリッドエリア */}
-      <div className="flex-1 max-w-md w-full mx-auto px-3 py-6 flex flex-col justify-center space-y-4">
-        
-        {/* 5x5 グリッド */}
+      {/* ビンゴグリッドエリア */}
+      <div className="flex-1 max-w-md w-full mx-auto px-3 py-6 flex flex-col justify-center">
         <div className="grid grid-cols-5 gap-2 w-full aspect-square">
           {gridCells.map((id) => {
-            // 中央は固定のFREEマス
             if (id === 13) {
               return (
-                <div
-                  key={id}
-                  className="rounded-xl border border-amber-500/30 bg-amber-500/5 flex flex-col items-center justify-center text-center aspect-square select-none"
-                >
-                  <span className="text-[10px] font-black text-amber-400 tracking-widest uppercase">
-                    FREE
-                  </span>
+                <div key={id} className="rounded-xl border border-amber-500/20 bg-amber-500/5 flex items-center justify-center aspect-square select-none">
+                  <span className="text-[10px] font-black text-amber-500/80">FREE</span>
                 </div>
               );
             }
@@ -106,44 +109,54 @@ export default function BingoPlayPage() {
             return (
               <button
                 key={id}
+                type="button" //  これでボタン押下時のリロードをガード！
                 onClick={() => handleCellClick(id)}
                 className={`
-                  relative rounded-xl border p-1 text-center flex flex-col items-center justify-center aspect-square transition-all duration-150 select-none outline-none active:scale-95 group
+                  relative rounded-xl border p-1 text-center flex flex-col items-center justify-center aspect-square transition-all duration-150 select-none outline-none active:scale-95
                   ${isOpened 
-                    // bingo 開封済み
                     ? "border-emerald-500 bg-gradient-to-br from-emerald-950/40 to-slate-900 text-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.2)] font-bold" 
-                    // bingo 未開封
-                    : "border-slate-800/80 bg-slate-900/20 text-slate-400 hover:border-slate-700 hover:text-slate-300"
+                    : "border-slate-800/80 bg-slate-900/20 text-slate-400 hover:border-slate-700"
                   }
                 `}
               >
-                {/* マス目のインデックス番号 */}
-                <span className={`absolute top-1 left-1.5 font-mono text-[8px] ${isOpened ? "text-emerald-500/60" : "text-slate-700"}`}>
-                  {id > 13 ? id - 1 : id}
-                </span>
-
-                {/* 登録されたテキスト */}
-                <span className="text-[9px] leading-tight font-bold tracking-tight break-all px-0.5">
-                  {myBingoData[id]}
-                </span>
-
-                {/* 右下の達成チェックマーク */}
-                {isOpened && (
-                  <span className="absolute bottom-1 right-1.5 text-[8px] text-emerald-400 font-bold">
-                    ✓
-                  </span>
-                )}
+                <span className={`absolute top-1 left-1.5 font-mono text-[8px] ${isOpened ? "text-emerald-500/60" : "text-slate-700"}`}>{id > 13 ? id - 1 : id}</span>
+                <span className="text-[9px] leading-tight font-bold break-all px-0.5">{myBingoData[id]}</span>
               </button>
             );
           })}
         </div>
-
       </div>
 
-      {/* 🔢 フッター：シンプルにシステム情報を出すだけ */}
-      <div className="w-full bg-slate-900/40 border-t border-slate-900/80 p-3 text-center text-[9px] font-mono text-slate-600">
-        BINGO MODE // NO REFRESH REQUIRED
-      </div>
+      {/* 1.2秒で「存在ごと」綺麗に消える演出レイヤー*/}
+      {showAnimation && (
+        /* pointer-events-none から z-50 にすることで、開いている時だけ最前面にし、消えたら跡形もなく消滅する */
+        <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-md z-50 flex flex-col items-center justify-center p-4 animate-fadeIn transition-all duration-300">
+          
+          {bingoLinesCount >= 2 ? (
+            <div className="text-center space-y-4 max-w-sm w-full p-2 animate-scaleUp">
+              <h2 className="text-5xl md:text-6xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-yellow-200 via-amber-400 to-orange-600 filter drop-shadow-[0_0_20px_rgba(245,158,11,0.6)] uppercase italic">
+                {bingoLinesCount === 2 ? "Double" : bingoLinesCount === 3 ? "Triple" : `${bingoLinesCount}Line`} <br />
+                <span className="text-6xl md:text-7xl block mt-1 tracking-tight">BINGO!!</span>
+              </h2>
+              
+              <div className="inline-block px-4 py-1 bg-amber-500/10 border border-amber-500/30 rounded-full">
+                <span className="font-mono text-sm font-black text-amber-400 tracking-wider">CRITICAL ATTACK +{bingoLinesCount * 250}PT</span>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center space-y-4 max-w-sm w-full p-2 animate-scaleUp">
+              <h2 className="text-6xl md:text-7xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-purple-300 via-fuchsia-500 to-indigo-700 filter drop-shadow-[0_0_15px_rgba(168,85,247,0.5)] uppercase italic">
+                BINGO!
+              </h2>
+              
+              <div className="inline-block px-4 py-1 bg-purple-500/10 border border-purple-500/30 rounded-full">
+                <span className="font-mono text-xs font-black text-purple-300 tracking-wider">BOSS DAMAGE +150PT</span>
+              </div>
+            </div>
+          )}
+          
+        </div>
+      )}
 
     </div>
   );
