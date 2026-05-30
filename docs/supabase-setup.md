@@ -34,9 +34,10 @@ npm run check:supabase-env
 
 ## MVP DB スキーマ作成
 
-Supabase Dashboard の SQL Editor を開き、以下のSQLを実行します。
+Supabase Dashboard の SQL Editor を開き、以下のSQLを**ファイル名の順**に実行します。
 
-- [`supabase/migrations/20260530000000_mvp_schema.sql`](../supabase/migrations/20260530000000_mvp_schema.sql)
+1. [`supabase/migrations/20260530000000_mvp_schema.sql`](../supabase/migrations/20260530000000_mvp_schema.sql)
+2. [`supabase/migrations/20260530010000_point_events_consumed.sql`](../supabase/migrations/20260530010000_point_events_consumed.sql) — `point_events.consumed_at` カラムと消費型攻撃 RPC `attack_with_points` を追加する
 
 このSQLで作成される主なテーブルは以下です。
 
