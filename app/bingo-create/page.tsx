@@ -12,7 +12,9 @@ type BingoQuestSession = {
     id: string;
     code: string;
     name: string;
-    gradeSection: string | null;
+    teacherName: string | null;
+    grade: string | null;
+    classSection: string | null;
     lessonTheme: string | null;
     lessonDescription: string | null;
   };
