@@ -313,7 +313,7 @@ insert into public.classes (
   class_section,
   lesson_theme,
   lesson_description,
-  teacherWords[]
+  teacher_words
 )
 values (
   '123456',
@@ -322,7 +322,8 @@ values (
   '2年',
   'A組',
   '英語: 不定詞と動名詞',
-  'to不定詞と動名詞の基本的な使い方を確認し、本文中の新出単語や重要熟語を扱います。'
+  'to不定詞と動名詞の基本的な使い方を確認し、本文中の新出単語や重要熟語を扱います。',
+  ARRAY['不定詞', '動名詞', 'to不定詞']
 )
 on conflict (code) do update
 set
@@ -331,7 +332,8 @@ set
   grade = excluded.grade,
   class_section = excluded.class_section,
   lesson_theme = excluded.lesson_theme,
-  lesson_description = excluded.lesson_description;
+  lesson_description = excluded.lesson_description,
+  teacher_words = excluded.teacher_words;
 
 insert into public.boss_states (class_id, name, max_hp, current_hp)
 select id, 'スライムキング', 1000, 1000
