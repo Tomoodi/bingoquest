@@ -13,6 +13,8 @@ type JoinResponse = {
     code: string;
     name: string;
     gradeSection: string | null;
+    lessonTheme: string | null;
+    lessonDescription: string | null;
   };
 };
 
