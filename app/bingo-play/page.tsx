@@ -37,7 +37,7 @@ export default function BingoPlayPage() {
     25: "チャイムと同時に板書終了",
   };
 
-  // 🖱️ タップでフラグを反転させるだけの純粋なトグル関数
+  // タップでフラグを反転させるだけの純粋なトグル関数
   const handleCellClick = (id: number) => {
     if (id === 13) return; // FREEマスは操作無効
     
@@ -50,7 +50,7 @@ export default function BingoPlayPage() {
   // 1〜25のインデックス配列
   const gridCells = Array.from({ length: 25 }, (_, i) => i + 1);
 
-  // 📈 開いたマスの合計数（FREEを除く）
+  // 開いたマスの合計数（FREEを除く）
   const openedCount = gridCells.filter(
     (id) => id !== 13 && openedCells[id] === true
   ).length;
@@ -58,7 +58,7 @@ export default function BingoPlayPage() {
   return (
     <div className="flex min-h-screen flex-col bg-slate-950 text-white font-sans selection:bg-emerald-500/20">
       
-      {/* 📋 上部ヘッダー：現在の開いた数だけをスタイリッシュに表示 */}
+      {/* 上部ヘッダー：現在の開いた数だけをスタイリッシュに表示 */}
       <div className="w-full bg-slate-900/60 border-b border-slate-800 p-4 sticky top-0 z-10 backdrop-blur flex justify-between items-center shadow-lg">
         <div>
           <h1 className="text-base font-black text-slate-100 tracking-wide">
@@ -81,10 +81,10 @@ export default function BingoPlayPage() {
         </div>
       </div>
 
-      {/* 🎮 メイン：ビンゴグリッドエリア */}
+      {/* メイン：ビンゴグリッドエリア */}
       <div className="flex-1 max-w-md w-full mx-auto px-3 py-6 flex flex-col justify-center space-y-4">
         
-        {/* 5x5 グリッド（スマホ画面いっぱいに広がるので非常に押しやすい） */}
+        {/* 5x5 グリッド */}
         <div className="grid grid-cols-5 gap-2 w-full aspect-square">
           {gridCells.map((id) => {
             // 中央は固定のFREEマス
@@ -110,9 +110,9 @@ export default function BingoPlayPage() {
                 className={`
                   relative rounded-xl border p-1 text-center flex flex-col items-center justify-center aspect-square transition-all duration-150 select-none outline-none active:scale-95 group
                   ${isOpened 
-                    // 🟢 開封済み：勉強への集中を邪魔しない、かつ視認性の高いエメラルド
+                    // bingo 開封済み
                     ? "border-emerald-500 bg-gradient-to-br from-emerald-950/40 to-slate-900 text-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.2)] font-bold" 
-                    // ⚪ 未開封：背景に馴染むダークグレー
+                    // bingo 未開封
                     : "border-slate-800/80 bg-slate-900/20 text-slate-400 hover:border-slate-700 hover:text-slate-300"
                   }
                 `}
