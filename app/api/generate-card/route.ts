@@ -26,8 +26,14 @@ export async function POST(req: NextRequest) {
     const json = JSON.parse(text)
 
     const allWords = [...existingWords, ...(json.words ?? [])]
+      .filter((w) => typeof w === "string" && w.trim() !== "")
       .sort(() => Math.random() - 0.5)
       .slice(0, 24)
+
+    if (allWords.length < 24) {
+      console.error("[generate-card] not enough words:", allWords.length)
+      return NextResponse.json({ error: `AIが十分な単語を生成できませんでした（${allWords.length}/24）。もう一度お試しください。` }, { status: 500 })
+    }
 
     console.log("[generate-card] upserting card...")
     const { data: card, error: cardError } = await supabase
