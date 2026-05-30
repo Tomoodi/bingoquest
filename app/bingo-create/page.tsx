@@ -30,7 +30,7 @@ export default function BingoCreatePage() {
     19: "例: 教科書の太字の単語",
     20: "例: 授業のまとめの英作文",
 
-    // 【21〜25マス：あいさんの意見を汲んだ、先生の行動・口癖（遊び枠）】
+    // 【21〜25マス：先生の行動・口癖（遊び枠）】
     21: "例: 先生の「ここテストに出る」",
     22: "例: 先生が「Repeat after me」",
     23: "例: 先生の「えーっと」が3回",
@@ -72,7 +72,7 @@ export default function BingoCreatePage() {
         {/* ヒントメッセージ（教科書推しに文言も変更！） */}
         <div className="bg-slate-900/30 border border-slate-800/80 rounded-xl p-3.5 text-xs text-slate-400 leading-relaxed">
           <span className="text-purple-400 font-bold">🎯 予習のコツ：</span>
-          次の時間の教科書やのパラパラとめくって、新しく出てくる単語や大事そうな文法を見つけてマスを埋めよう！授業中に起きそうな出来事などお楽しみ要素を混ぜてもOK！
+          次の時間の教科書やノートをパラパラとめくって、新しく出てくる単語や大事そうな文法を見つけてマスを埋めよう！授業中に起きそうな出来事などお楽しみ要素を混ぜてもOK！
         </div>
 
         {/* 5x5 入力グリッド */}
