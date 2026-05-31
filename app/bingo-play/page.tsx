@@ -14,6 +14,8 @@ type BingoQuestSession = {
     id: string;
     code: string;
     name: string;
+    lessonTheme?: string;
+    lessonDescription?: string;
   };
   bingoCard?: {
     id: string;
@@ -91,6 +93,23 @@ export default function BingoPlayPage() {
   // ボスに渡す用の「直近で受けたダメージ」
   const [attackEvent, setAttackEvent] = useState<{ amount: number; time: number } | null>(null);
 
+  // クイズ機能
+  const [lessonTheme, setLessonTheme] = useState("");
+  const [lessonDescription, setLessonDescription] = useState("");
+  const [quizCellIds, setQuizCellIds] = useState<Set<number>>(new Set());
+  const [quizCellId, setQuizCellId] = useState<number | null>(null);
+  const [quiz, setQuiz] = useState<{ question: string; options: string[]; answerIndex: number } | null>(null);
+  const [isLoadingQuiz, setIsLoadingQuiz] = useState(false);
+  const [selectedOption, setSelectedOption] = useState<number | null>(null);
+  const [quizResult, setQuizResult] = useState<"correct" | "wrong" | null>(null);
+  const [cooldowns, setCooldowns] = useState<{ [key: number]: number }>({});
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => setTick((t) => t + 1), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   // sessionStorage からコードを取得してクラス情報を読み込む処理 (setTimeoutで非同期化)
   useEffect(() => {
     const initSession = setTimeout(() => {
@@ -124,6 +143,8 @@ export default function BingoPlayPage() {
         setClassId(storedClassId);
         setClassName(storedClassName);
         setStudentId(storedStudentId);
+        setLessonTheme(sessionData.class.lessonTheme ?? "");
+        setLessonDescription(sessionData.class.lessonDescription ?? "");
 
         if (!storedCardId) {
           setCardErrorMessage("ビンゴカードがまだ作成されていません。");
@@ -266,8 +287,40 @@ export default function BingoPlayPage() {
 
         setBingoCells(cellsById);
         setOpenedCells(nextOpenedCells);
-        // 貯蓄ポイントを DB の値で復元（リロードしても保持される）
         setAccumulatedPoints(successData.accumulatedPoints);
+
+        // 全ビンゴラインに必ず1問入るようにクイズマスを選ぶ
+        const ROWS = [[1,2,3,4,5],[6,7,8,9,10],[11,12,14,15],[16,17,18,19,20],[21,22,23,24,25]]; // 行（13=FREE除く）
+        const COLS = [[1,6,11,16,21],[2,7,12,17,22],[3,8,14,19,24],[4,9,15,20,25],[5,10,12,18,23]]; // 列（13除く）
+        const DIAG1 = [1,7,19,25];   // 左上→右下（13はFREEなので除く）
+        const DIAG2 = [5,9,17,21];   // 右上→左下（13はFREEなので除く）
+
+        const pick = (arr: number[]) => arr[Math.floor(Math.random() * arr.length)];
+        const quizSet = new Set<number>();
+
+        // ① 各行から1マス → 全横ラインをカバー
+        ROWS.forEach((row) => quizSet.add(pick(row)));
+
+        // ② 各列を確認 → その列のどれも選ばれていなければ1マス追加
+        COLS.forEach((col) => {
+          if (!col.some((id) => quizSet.has(id))) quizSet.add(pick(col));
+        });
+
+        // ③ 斜めを確認 → カバーされていなければ1マス追加
+        if (!DIAG1.some((id) => quizSet.has(id))) quizSet.add(pick(DIAG1));
+        if (!DIAG2.some((id) => quizSet.has(id))) quizSet.add(pick(DIAG2));
+
+        // ④ 10〜12マスになるまでランダムで追加
+        const remaining = [1,2,3,4,5,6,7,8,9,10,11,12,14,15,16,17,18,19,20,21,22,23,24,25]
+          .filter((id) => !quizSet.has(id))
+          .sort(() => Math.random() - 0.5);
+        const target = Math.floor(Math.random() * 3) + 10; // 10〜12
+        for (const id of remaining) {
+          if (quizSet.size >= target) break;
+          quizSet.add(id);
+        }
+
+        setQuizCellIds(quizSet);
       } catch (error) {
         console.error("ビンゴカードの取得に失敗しました:", error);
         setCardErrorMessage("通信に失敗しました。時間をおいてもう一度お試しください。");
@@ -279,18 +332,63 @@ export default function BingoPlayPage() {
     fetchBingoCard();
   }, [cardId, classId, studentId]);
 
-  // マスをタップ：開放可能か確認し、確認モーダルを開く（マス開放は一方向）
+  // マスをタップ：クイズマスならクイズ、それ以外は確認モーダル
   const requestOpenCell = (id: number) => {
-    if (id === 13) return; // FREE
+    if (id === 13) return;
     if (!classId || !studentId || !cardId || isLoadingCard || cardErrorMessage) return;
     if (!bingoCells[id]) return;
-    if (openedCells[id]) return; // 一度開けたマスは閉じられない
-    setPendingCellId(id);
+    if (openedCells[id]) return;
+
+    // クールダウン中はスキップ
+    if (Date.now() < (cooldowns[id] ?? 0)) return;
+
+    if (quizCellIds.has(id)) {
+      // クイズマス → クイズモーダルへ
+      setQuizCellId(id);
+      setQuiz(null);
+      setSelectedOption(null);
+      setQuizResult(null);
+      setIsLoadingQuiz(true);
+      fetch("/api/generate-quiz", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lesson_theme: lessonTheme, lesson_description: lessonDescription }),
+      }).then((res) => res.json()).then((data) => {
+        setIsLoadingQuiz(false);
+        setQuiz(data);
+      }).catch(() => {
+        setIsLoadingQuiz(false);
+        setQuizCellId(null);
+      });
+    } else {
+      // 通常マス → 確認モーダルへ
+      setPendingCellId(id);
+    }
   };
 
   const cancelOpenCell = () => {
     if (isOpeningCell) return;
     setPendingCellId(null);
+  };
+
+  const handleSelectOption = (index: number) => {
+    if (selectedOption !== null || !quiz || quizCellId === null) return;
+    setSelectedOption(index);
+    if (index === quiz.answerIndex) {
+      setQuizResult("correct");
+      setTimeout(() => {
+        setQuizCellId(null);
+        setQuiz(null);
+        setPendingCellId(quizCellId);
+      }, 800);
+    } else {
+      setQuizResult("wrong");
+      setTimeout(() => {
+        setCooldowns((prev) => ({ ...prev, [quizCellId]: Date.now() + 30_000 }));
+        setQuizCellId(null);
+        setQuiz(null);
+      }, 1000);
+    }
   };
 
   // 確認モーダルで「はい」：open API を呼び、DB にマス開放とポイントイベントを記録する
@@ -507,25 +605,39 @@ export default function BingoPlayPage() {
 
             const cell = bingoCells[id];
             const isOpened = !!openedCells[id];
+            const cooldownRemaining = Math.max(0, Math.ceil(((cooldowns[id] ?? 0) - Date.now()) / 1000));
+            const isCoolingDown = cooldownRemaining > 0;
+            const isQuizCell = quizCellIds.has(id);
 
             return (
               <button
                 key={id}
-                type="button" //  これでボタン押下時のリロードをガード！
+                type="button"
                 onClick={() => requestOpenCell(id)}
-                disabled={isOpened}
+                disabled={isOpened || isCoolingDown}
                 className={`
                   relative rounded-xl border p-1 text-center flex flex-col items-center justify-center aspect-square transition-all duration-150 select-none outline-none active:scale-95
                   ${isOpened
                     ? "border-emerald-500 bg-gradient-to-br from-emerald-950/40 to-slate-900 text-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.2)] font-bold cursor-default"
-                    : "border-slate-800/80 bg-slate-900/20 text-slate-400 hover:border-slate-700"
+                    : isCoolingDown
+                      ? "border-red-900/50 bg-red-950/20 text-red-400/60 cursor-not-allowed"
+                      : isQuizCell
+                        ? "border-purple-700/60 bg-purple-950/10 text-slate-400 hover:border-purple-600"
+                        : "border-slate-800/80 bg-slate-900/20 text-slate-400 hover:border-slate-700"
                   }
                 `}
               >
                 <span className={`absolute top-1 left-1.5 font-mono text-[8px] ${isOpened ? "text-emerald-500/60" : "text-slate-700"}`}>{id > 13 ? id - 1 : id}</span>
-                <span className="text-[9px] leading-tight font-bold break-all px-0.5">
-                  {isLoadingCard ? "読み込み中..." : cell?.text ?? ""}
-                </span>
+                {!isOpened && isQuizCell && !isCoolingDown && (
+                  <span className="absolute top-1 right-1 text-[8px] text-purple-500">❓</span>
+                )}
+                {isCoolingDown ? (
+                  <span className="text-lg font-black text-red-400/80">{cooldownRemaining}</span>
+                ) : (
+                  <span className="text-[9px] leading-tight font-bold break-all px-0.5">
+                    {isLoadingCard ? "読み込み中..." : cell?.text ?? ""}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -561,6 +673,48 @@ export default function BingoPlayPage() {
                 {isOpeningCell ? "開放中..." : "はい"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* クイズモーダル */}
+      {quizCellId !== null && (
+        <div className="absolute inset-0 bg-slate-950/95 backdrop-blur-md z-40 flex flex-col items-center justify-center p-6">
+          <div className="w-full max-w-sm bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-5">
+            <p className="text-[10px] font-black uppercase tracking-widest text-purple-400">Quiz — マスを開けるには正解しよう！</p>
+            {isLoadingQuiz ? (
+              <p className="text-sm text-slate-500 text-center animate-pulse">クイズを生成中...</p>
+            ) : quiz ? (
+              <>
+                <p className="text-sm font-bold text-slate-100 leading-relaxed">{quiz.question}</p>
+                <div className="space-y-2">
+                  {quiz.options.map((option, i) => {
+                    const isSelected = selectedOption === i;
+                    const isCorrect = i === quiz.answerIndex;
+                    let style = "border-slate-700 bg-slate-800/50 text-slate-300 hover:border-slate-600";
+                    if (selectedOption !== null) {
+                      if (isCorrect) style = "border-emerald-500 bg-emerald-950/40 text-emerald-300";
+                      else if (isSelected) style = "border-red-500 bg-red-950/40 text-red-300";
+                      else style = "border-slate-800 bg-slate-900 text-slate-600";
+                    }
+                    return (
+                      <button key={i} type="button" onClick={() => handleSelectOption(i)} disabled={selectedOption !== null}
+                        className={`w-full text-left px-4 py-3 rounded-xl border text-xs font-bold transition-all ${style}`}>
+                        {option}
+                      </button>
+                    );
+                  })}
+                </div>
+                {quizResult === "correct" && <p className="text-center text-emerald-400 font-black tracking-wider">正解！マスが開く！</p>}
+                {quizResult === "wrong" && <p className="text-center text-red-400 font-black tracking-wider">不正解… 30秒後に再挑戦できます</p>}
+              </>
+            ) : null}
+            {!quizResult && (
+              <button type="button" onClick={() => setQuizCellId(null)}
+                className="w-full text-center text-xs text-slate-600 hover:text-slate-400 transition-colors">
+                キャンセル
+              </button>
+            )}
           </div>
         </div>
       )}
