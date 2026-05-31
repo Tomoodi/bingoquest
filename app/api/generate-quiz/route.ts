@@ -5,16 +5,17 @@ const COOLDOWN_MS = 30_000
 
 export async function POST(req: NextRequest) {
   try {
-    const { word, lesson_theme, lesson_description } = await req.json()
+    const { lesson_theme, lesson_description } = await req.json()
 
-    if (!word) {
-      return NextResponse.json({ error: "word is required" }, { status: 400 })
+    if (!lesson_theme) {
+      return NextResponse.json({ error: "lesson_theme is required" }, { status: 400 })
     }
 
     const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
 
-    const prompt = `授業テーマ「${lesson_theme}」（${lesson_description}）の授業に登場する「${word}」について、生徒向けの簡単な4択クイズを1問作ってください。
-「${word}」の意味や使い方を問う問題にしてください。
+    const prompt = `授業テーマ「${lesson_theme}」の授業内容について、生徒向けの簡単な4択クイズを1問作ってください。
+授業の概要：${lesson_description}
+授業で学ぶ内容・用語・概念に関する問題にしてください。
 JSON形式のみで返してください:
 {"question": "問題文", "options": ["選択肢A", "選択肢B", "選択肢C", "選択肢D"], "answerIndex": 0}
 answerIndexは正解の選択肢のインデックス（0〜3）です。`
