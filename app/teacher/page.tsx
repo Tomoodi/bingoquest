@@ -1,56 +1,44 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import Link from "next/link";
 
-export default function BingoTeacherManagementPage() {
-  const [teacherName, setTeacherName] = useState("");
-  const [grade, setGrade] = useState("");
-  const [classSection, setClassSection] = useState("");
-  const [lessonTheme, setLessonTheme] = useState("");
-  const [lessonDescription, setLessonDescription] = useState("");
-  
-  const [classCode, setClassCode] = useState("");
-  const [isCreated, setIsCreated] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
+type ClassRoom = {
+  id: string;
+  code: string;
+  grade: string;
+  class_section: string;
+  name: string;          
+  lesson_theme: string;  
+  teacher_name: string;  
+  teacher_words: string; // 💡 取得用に型を追加
+  created_at: string;
+};
 
-  const isFormValid = 
-    teacherName.trim() !== "" && 
-    grade.trim() !== "" && 
-    classSection.trim() !== "" &&
-    lessonTheme.trim() !== "" && 
-    lessonDescription.trim() !== "";
+export default function TeacherCodePage() {
+  const [myRooms, setMyRooms] = useState<ClassRoom[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const handleCreateClass = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!isFormValid || isSaving) return;
+  const currentTeacherName = "山田 太郎"; 
 
-    setIsSaving(true);
-    const generatedCode = Math.floor(100000 + Math.random() * 900000).toString();
-
-    try {
-      const response = await fetch("/api/classes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          teacherName,
-          grade,
-          classSection,
-          lessonTheme,
-          lessonDescription,
-          classCode: generatedCode,
-        }),
-      });
-
-      if (!response.ok) throw new Error("作成に失敗しました。");
-
-      setClassCode(generatedCode);
-      setIsCreated(true);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setIsSaving(false);
+  useEffect(() => {
+    async function fetchMyCodes() {
+      try {
+        const response = await fetch(`/api/classes?teacherName=${encodeURIComponent(currentTeacherName)}`);
+        const data = await response.json();
+        if (response.ok && data.classes) {
+          setMyRooms(data.classes);
+        }
+      } catch (error) {
+        console.error("コードの取得に失敗しました:", error);
+      } finally {
+        setIsLoading(false);
+      }
     }
-  };
+    fetchMyCodes();
+  }, []);
+
+  const latestRoom = myRooms[0];
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-950 text-white font-sans relative overflow-hidden">
@@ -58,66 +46,73 @@ export default function BingoTeacherManagementPage() {
       <div className="w-full bg-slate-900/40 border-b border-slate-800 p-5 sticky top-0 z-10 backdrop-blur">
         <div className="max-w-md mx-auto flex justify-between items-center">
           <div>
-            <h1 className="text-xl font-bold tracking-wide text-purple-400">QUEST SETUP</h1>
-            <p className="text-xs text-slate-400 mt-0.5">情報を入力してクエストを発行しよう！</p>
+            <h1 className="text-xl font-bold tracking-wide text-amber-400">CODE CENTER</h1>
+            <p className="text-xs text-slate-400 mt-0.5">{currentTeacherName} 先生の管理パネル</p>
           </div>
-          <div className="text-right">
-            <span className={`font-mono text-sm font-black ${isFormValid ? "text-emerald-400" : "text-amber-500"}`}>
-              {isFormValid ? "READY" : "INCOMPLETE"}
-            </span>
-          </div>
+          <Link href="/teacher/create">
+            <button className="bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-bold px-3 py-2 rounded-xl border border-slate-800 transition-all">
+              ← 新規作成
+            </button>
+          </Link>
         </div>
       </div>
 
-      <div className="flex-1 max-w-md w-full mx-auto px-3 py-6 flex flex-col space-y-6">
-        <div className="rounded-xl border border-indigo-500/30 bg-gradient-to-r from-indigo-500/5 to-slate-900/40 p-4 shadow-md">
-          <p className="text-[10px] font-black uppercase tracking-widest text-indigo-400">ROOM CREATOR</p>
-          <h2 className="mt-1 text-base font-black text-indigo-100">新規クエストの生成</h2>
-        </div>
+      <div className="flex-1 max-w-md w-full mx-auto px-3 py-6 space-y-6 flex flex-col justify-center">
+        
+        {/* 最新のコード */}
+        {latestRoom && (
+          <div className="rounded-2xl border-2 border-amber-500/40 bg-gradient-to-b from-amber-500/10 to-slate-900/60 p-6 text-center shadow-[0_0_30px_rgba(245,158,11,0.15)]">
+            <span className="bg-amber-950 text-amber-400 border border-amber-500/30 text-[10px] px-2.5 py-1 rounded-md font-black tracking-widest uppercase">
+              LATEST ISSUED CODE
+            </span>
+            <p className="text-xs text-slate-400 mt-3">
+              {latestRoom.grade}{latestRoom.class_section} ｜ <span className="text-purple-400 font-bold">{latestRoom.name}</span> ｜ <span className="text-amber-300">{latestRoom.lesson_theme}</span>
+            </p>
+            
+            <h2 className="text-5xl font-mono font-black text-white tracking-widest my-4">
+              {latestRoom.code}
+            </h2>
 
-        {!isCreated ? (
-          <form onSubmit={handleCreateClass} className="space-y-4">
-            {/* 1. 名前 */}
-            <div className={`relative rounded-xl border p-2 bg-slate-900/20 ${teacherName ? "border-purple-500/60" : "border-slate-800"}`}>
-              <span className="absolute top-1 left-2.5 font-mono text-[8px] text-slate-600">01 : 先生のお名前</span>
-              <input type="text" value={teacherName} onChange={(e) => setTeacherName(e.target.value)} required className="w-full pt-3 px-1 bg-transparent text-xs font-bold text-slate-200 outline-none placeholder:text-slate-700" placeholder="山田 太郎" />
+            {/* 💡 登録されたAI用ビンゴワードのプレビュー表示エリアを追加 */}
+            <div className="mt-2 p-2 bg-slate-950/60 rounded-xl border border-slate-800 text-left">
+              <span className="text-[9px] font-mono text-emerald-400 font-black tracking-wider block mb-1">🎯 BINGO WORDS (PREVIEW)</span>
+              <p className="text-[11px] text-slate-400 truncate font-mono">{latestRoom.teacher_words || "未登録"}</p>
             </div>
 
-            {/* 2. 学年と組 */}
-            <div className="flex gap-2">
-              <div className={`relative flex-1 rounded-xl border p-2 bg-slate-900/20 ${grade ? "border-purple-500/60" : "border-slate-800"}`}>
-                <span className="absolute top-1 left-2.5 font-mono text-[8px] text-slate-600">02A : 学年</span>
-                <input type="text" value={grade} onChange={(e) => setGrade(e.target.value)} required className="w-full pt-3 px-1 bg-transparent text-xs font-bold text-slate-200 outline-none placeholder:text-slate-700" placeholder="2年" />
-              </div>
-              <div className={`relative flex-1 rounded-xl border p-2 bg-slate-900/20 ${classSection ? "border-purple-500/60" : "border-slate-800"}`}>
-                <span className="absolute top-1 left-2.5 font-mono text-[8px] text-slate-600">02B : 組</span>
-                <input type="text" value={classSection} onChange={(e) => setClassSection(e.target.value)} required className="w-full pt-3 px-1 bg-transparent text-xs font-bold text-slate-200 outline-none placeholder:text-slate-700" placeholder="3組" />
-              </div>
-            </div>
-
-            {/* 3. テーマ */}
-            <div className={`relative rounded-xl border p-2 bg-slate-900/20 ${lessonTheme ? "border-purple-500/60" : "border-slate-800"}`}>
-              <span className="absolute top-1 left-2.5 font-mono text-[8px] text-slate-600">03 : 授業テーマ</span>
-              <input type="text" value={lessonTheme} onChange={(e) => setLessonTheme(e.target.value)} required className="w-full pt-3 px-1 bg-transparent text-xs font-bold text-slate-200 outline-none placeholder:text-slate-700" placeholder="英語：不定詞" />
-            </div>
-
-            {/* 4. 詳細 */}
-            <div className={`relative rounded-xl border p-2 bg-slate-900/20 ${lessonDescription ? "border-purple-500/60" : "border-slate-800"}`}>
-              <span className="absolute top-1 left-2.5 font-mono text-[8px] text-slate-600">04 : 授業内容の詳細</span>
-              <textarea value={lessonDescription} onChange={(e) => setLessonDescription(e.target.value)} required rows={3} className="w-full pt-4 px-1 bg-transparent text-xs font-bold text-slate-200 outline-none resize-none placeholder:text-slate-700" placeholder="ここに詳細を入力..." />
-            </div>
-
-            <button type="submit" disabled={!isFormValid || isSaving} className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-black py-4 rounded-xl">
-              {isSaving ? "送信中..." : "ルームを初期化してコードを発行！"}
-            </button>
-          </form>
-        ) : (
-          <div className="text-center py-10">
-             <h2 className="text-2xl font-black text-indigo-400">QUEST ISSUED</h2>
-             <p className="mt-4 text-slate-400">ROOM CODE:</p>
-             <p className="text-4xl font-mono font-black text-white">{classCode}</p>
+            <p className="text-[10px] text-amber-500 font-bold tracking-wider mt-4">生徒にこの6桁の数字を伝えてください</p>
           </div>
         )}
+
+        {/* 過去の発行履歴 */}
+        <div className="space-y-3 flex-1">
+          <h3 className="text-xs font-mono font-bold text-slate-500 tracking-wider uppercase px-1">
+            HISTORY ({myRooms.length})
+          </h3>
+
+          {isLoading ? (
+            <div className="text-center py-6 font-mono text-xs text-slate-600 animate-pulse">LOADING HISTORY...</div>
+          ) : myRooms.length <= 1 ? (
+            <div className="text-center py-6 text-xs text-slate-600">過去の発行履歴はありません</div>
+          ) : (
+            <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+              {myRooms.slice(1).map((room) => (
+                <div key={room.id} className="flex justify-between items-center p-3 rounded-xl border border-slate-900 bg-slate-900/20 text-xs">
+                  <div className="truncate flex-1 mr-2">
+                    <p className="font-bold text-slate-300 truncate">
+                      <span className="text-purple-400 font-medium">[{room.name}]</span> {room.lesson_theme}
+                    </p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">{room.grade} {room.class_section}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <span className="font-mono font-black text-sm text-slate-400 bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-800">
+                      {room.code}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
