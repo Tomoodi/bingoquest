@@ -23,6 +23,14 @@ function isUuid(value: string): boolean {
   );
 }
 
+// デフォルトのボス画像（Supabase Storage の game-assets バケット）。
+// seed と同じスライム画像を使う。AI 生成に置き換わるまでの既定値。
+const bossAssetUrl = (file: string): string =>
+  `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/game-assets/${file}`;
+
+const DEFAULT_BOSS_IMAGE_URL = bossAssetUrl("slime.png");
+const DEFAULT_BOSS_OVERKILL_IMAGE_URL = bossAssetUrl("slime-overkill.png");
+
 // 指定クラスのボスを作成する。クラス作成後にフロントから続けて呼ぶ想定。
 export async function POST(request: Request) {
   let body: CreateBossRequestBody;
@@ -39,11 +47,19 @@ export async function POST(request: Request) {
     return jsonError(400, "INVALID_CLASS_ID", "クラスIDが正しくありません。");
   }
 
-  // boss_states.class_id は unique。既に存在する場合は競合を無視して冪等にする。
+  // boss_states.class_id は unique。既存があれば更新して冪等にする。
+  // ボス生成時に既定のスライム画像URLを設定する（AI生成に置き換わるまでの既定値）。
   const { data: bossData, error: bossError } = await supabaseServer
     .from("boss_states")
-    .upsert({ class_id: classId }, { onConflict: "class_id" })
-    .select("id, class_id, name, max_hp, current_hp")
+    .upsert(
+      {
+        class_id: classId,
+        image_url: DEFAULT_BOSS_IMAGE_URL,
+        overkill_image_url: DEFAULT_BOSS_OVERKILL_IMAGE_URL,
+      },
+      { onConflict: "class_id" }
+    )
+    .select("id, class_id, name, max_hp, current_hp, image_url, overkill_image_url")
     .single();
 
   if (bossError) {
@@ -59,6 +75,8 @@ export async function POST(request: Request) {
         name: bossData.name,
         maxHp: bossData.max_hp,
         currentHp: bossData.current_hp,
+        imageUrl: bossData.image_url,
+        overkillImageUrl: bossData.overkill_image_url,
       },
     },
     { status: 201 }

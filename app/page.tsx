@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 
@@ -148,6 +149,16 @@ export default function StudentLoginPage() {
             {isSubmitting ? "ログイン中..." : "ログイン"}
           </button>
         </form>
+
+        {/* 先生用ログインへの導線 */}
+        <div className="mt-6 border-t border-slate-800/60 pt-4 text-center">
+          <Link
+            href="/teacher/login"
+            className="text-xs font-bold tracking-wider text-slate-400 underline-offset-4 transition-colors hover:text-indigo-300 hover:underline"
+          >
+            先生用ログイン →
+          </Link>
+        </div>
       </div>
 
       {/* フッター */}
