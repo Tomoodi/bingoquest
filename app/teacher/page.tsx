@@ -1,23 +1,69 @@
 "use client";
 
-import React, { useState } from "react";
+import { useRouter } from "next/navigation";
+import React, { useEffect, useState } from "react";
+
+import { supabase } from "@/lib/supabase/client";
 
 export default function BingoTeacherManagementPage() {
+  const router = useRouter();
   const [teacherName, setTeacherName] = useState("");
   const [grade, setGrade] = useState("");
   const [classSection, setClassSection] = useState("");
   const [lessonTheme, setLessonTheme] = useState("");
   const [lessonDescription, setLessonDescription] = useState("");
-  
+
   const [classCode, setClassCode] = useState("");
   const [isCreated, setIsCreated] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isReady, setIsReady] = useState(false);
 
-  const isFormValid = 
-    teacherName.trim() !== "" && 
-    grade.trim() !== "" && 
+  // マウント時ガード: 未ログイン→login、プロフィール未登録→profile。
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) {
+        router.replace("/teacher/login");
+        return;
+      }
+
+      const res = await fetch("/api/teachers", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!active) return;
+
+      if (!res.ok) {
+        router.replace("/teacher/login");
+        return;
+      }
+
+      const json = (await res.json()) as {
+        teacher: { name: string } | null;
+      };
+      if (!json.teacher) {
+        router.replace("/teacher/profile");
+        return;
+      }
+
+      setTeacherName(json.teacher.name);
+      setIsReady(true);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [router]);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.replace("/teacher/login");
+  };
+
+  const isFormValid =
+    grade.trim() !== "" &&
     classSection.trim() !== "" &&
-    lessonTheme.trim() !== "" && 
+    lessonTheme.trim() !== "" &&
     lessonDescription.trim() !== "";
 
   const handleCreateClass = async (e: React.FormEvent) => {
@@ -28,10 +74,20 @@ export default function BingoTeacherManagementPage() {
     const generatedCode = Math.floor(100000 + Math.random() * 900000).toString();
 
     try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) {
+        router.replace("/teacher/login");
+        return;
+      }
+
       // 1) クラスを作成
       const classResponse = await fetch("/api/classes", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
           teacherName,
           grade,
@@ -67,6 +123,14 @@ export default function BingoTeacherManagementPage() {
     }
   };
 
+  if (!isReady) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-400">
+        読み込み中...
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-screen flex-col bg-slate-950 text-white font-sans relative overflow-hidden">
       {/* ヘッダー */}
@@ -74,12 +138,19 @@ export default function BingoTeacherManagementPage() {
         <div className="max-w-md mx-auto flex justify-between items-center">
           <div>
             <h1 className="text-xl font-bold tracking-wide text-purple-400">QUEST SETUP</h1>
-            <p className="text-xs text-slate-400 mt-0.5">情報を入力してクエストを発行しよう！</p>
+            <p className="text-xs text-slate-400 mt-0.5">{teacherName} 先生</p>
           </div>
-          <div className="text-right">
+          <div className="flex items-center gap-3">
             <span className={`font-mono text-sm font-black ${isFormValid ? "text-emerald-400" : "text-amber-500"}`}>
               {isFormValid ? "READY" : "INCOMPLETE"}
             </span>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="rounded-lg border border-slate-700 px-2.5 py-1 text-[10px] font-bold text-slate-400 hover:text-white hover:border-slate-500 transition-colors"
+            >
+              ログアウト
+            </button>
           </div>
         </div>
       </div>
@@ -92,10 +163,10 @@ export default function BingoTeacherManagementPage() {
 
         {!isCreated ? (
           <form onSubmit={handleCreateClass} className="space-y-4">
-            {/* 1. 名前 */}
-            <div className={`relative rounded-xl border p-2 bg-slate-900/20 ${teacherName ? "border-purple-500/60" : "border-slate-800"}`}>
+            {/* 1. 名前（プロフィール由来・読み取り専用） */}
+            <div className="relative rounded-xl border border-slate-800 p-2 bg-slate-900/40">
               <span className="absolute top-1 left-2.5 font-mono text-[8px] text-slate-600">01 : 先生のお名前</span>
-              <input type="text" value={teacherName} onChange={(e) => setTeacherName(e.target.value)} required className="w-full pt-3 px-1 bg-transparent text-xs font-bold text-slate-200 outline-none placeholder:text-slate-700" placeholder="山田 太郎" />
+              <p className="w-full pt-3 px-1 text-xs font-bold text-slate-300">{teacherName}</p>
             </div>
 
             {/* 2. 学年と組 */}
