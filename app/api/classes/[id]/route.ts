@@ -139,7 +139,7 @@ export async function PATCH(
   const lessonDescription = requiredText(body.lessonDescription);
   const teacherWords = normalizeWords(body.teacherWords);
 
-  if (!subject || !grade || !classSection || !lessonTheme || !lessonDescription) {
+  if (!subject || !grade || !classSection || !lessonTheme || !lessonDescription || !teacherWords) {
     return jsonError(400, "INVALID_INPUT", "入力内容が正しくありません。");
   }
 
@@ -147,7 +147,7 @@ export async function PATCH(
     .from("classes")
     .update({
       name: subject,
-      grade,
+      grade: grade,
       class_section: classSection,
       lesson_theme: lessonTheme,
       lesson_description: lessonDescription,
