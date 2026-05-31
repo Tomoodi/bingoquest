@@ -16,7 +16,6 @@ type BingoQuestSession = {
     grade: string | null;
     classSection: string | null;
     lessonTheme: string | null;
-    lessonDescription: string | null;
   };
   bingoCard?: {
     id: string;
@@ -226,7 +225,7 @@ export default function BingoCreatePage() {
   return (
     <div className="flex min-h-screen flex-col bg-slate-950 text-white font-sans">
       
-      {/* 🔮 ヘッダーエリア */}
+      {/* ヘッダーエリア */}
       <div className="w-full bg-slate-900/40 border-b border-slate-800 p-5 sticky top-0 z-10 backdrop-blur">
         <div className="max-w-md mx-auto flex justify-between items-center">
           <div>
@@ -241,7 +240,7 @@ export default function BingoCreatePage() {
         </div>
       </div>
 
-      {/* 📝 メインコンテンツ */}
+      {/* メインコンテンツ */}
       <div className="flex-1 max-w-md w-full mx-auto px-3 py-6 flex flex-col justify-between space-y-6">
         {session ? (
           <section className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
@@ -280,11 +279,6 @@ export default function BingoCreatePage() {
                 {session.class.name}
               </span>
             </div>
-            {session.class.lessonDescription ? (
-              <p className="mt-3 text-xs leading-relaxed text-slate-300">
-                {session.class.lessonDescription}
-              </p>
-            ) : null}
           </section>
         ) : null}
         
