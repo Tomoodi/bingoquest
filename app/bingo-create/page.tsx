@@ -16,7 +16,6 @@ type BingoQuestSession = {
     grade: string | null;
     classSection: string | null;
     lessonTheme: string | null;
-    lessonDescription: string | null;
   };
   bingoCard?: {
     id: string;
@@ -280,11 +279,6 @@ export default function BingoCreatePage() {
                 {session.class.name}
               </span>
             </div>
-            {session.class.lessonDescription ? (
-              <p className="mt-3 text-xs leading-relaxed text-slate-300">
-                {session.class.lessonDescription}
-              </p>
-            ) : null}
           </section>
         ) : null}
         
