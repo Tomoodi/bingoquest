@@ -12,7 +12,8 @@ export async function POST(req: NextRequest) {
     const totalNeeded = 24 - (teacherWords?.length ?? 0) - (studentWords?.length ?? 0)
     const existingWords = [...(studentWords ?? []), ...(teacherWords ?? [])]
 
-    const prompt = `あなたは教育支援AIです。テーマが${lesson_theme}、概要が${lesson_description}の授業のビンゴカード用キーワードをあと${totalNeeded}個生成してください。すでにあるキーワード:${existingWords.join(", ")} 条件：重複なし、授業で使われる専門用語中心、JSON形式で {"words": ["単語1","単語2",...]}のみ返すこと`
+    const requestCount = totalNeeded + 10
+    const prompt = `あなたは教育支援AIです。テーマが${lesson_theme}、概要が${lesson_description}の授業のビンゴカード用キーワードをちょうど${requestCount}個生成してください。必ず${requestCount}個生成すること。すでにあるキーワード:${existingWords.join(", ")} 条件：重複なし、授業で使われる専門用語中心、JSON形式で {"words": ["単語1","単語2",...]}のみ返すこと`
 
     console.log("[generate-card] calling Groq...")
     const completion = await groq.chat.completions.create({
