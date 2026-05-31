@@ -1,3 +1,4 @@
+import { getAuthedUser } from "@/lib/supabase/auth";
 import { supabaseServer } from "@/lib/supabase/server";
 
 type CreateClassRequestBody = {
@@ -10,6 +11,8 @@ type CreateClassRequestBody = {
 };
 
 type CreateClassErrorCode =
+  | "UNAUTHENTICATED"
+  | "PROFILE_REQUIRED"
   | "INVALID_JSON"
   | "INVALID_INPUT"
   | "INVALID_CLASS_CODE"
@@ -33,6 +36,32 @@ function requiredText(value: unknown): string | null {
 }
 
 export async function POST(request: Request) {
+  // クラス作成はログイン必須。本人を確定してから処理する。
+  const user = await getAuthedUser(request);
+  if (!user) {
+    return jsonError(401, "UNAUTHENTICATED", "ログインが必要です。");
+  }
+
+  // 先生プロフィール（teachers 行）が未登録なら作成させる。
+  const { data: teacher, error: teacherError } = await supabaseServer
+    .from("teachers")
+    .select("id, name")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (teacherError) {
+    console.error("Failed to fetch teacher:", teacherError);
+    return jsonError(500, "CREATE_FAILED", "クラスの作成に失敗しました。");
+  }
+
+  if (!teacher) {
+    return jsonError(
+      403,
+      "PROFILE_REQUIRED",
+      "先生プロフィールの登録が必要です。"
+    );
+  }
+
   let body: CreateClassRequestBody;
 
   try {
@@ -41,7 +70,8 @@ export async function POST(request: Request) {
     return jsonError(400, "INVALID_JSON", "リクエストの形式が正しくありません。");
   }
 
-  const teacherName = requiredText(body.teacherName);
+  // 表示用の先生名はプロフィールを正とし、body は後方互換のフォールバック。
+  const teacherName = teacher.name ?? requiredText(body.teacherName);
   const grade = requiredText(body.grade);
   const classSection = requiredText(body.classSection);
   const lessonTheme = requiredText(body.lessonTheme);
@@ -78,6 +108,7 @@ export async function POST(request: Request) {
     .insert({
       code: classCode,
       name,
+      teacher_id: user.id,
       teacher_name: teacherName,
       grade,
       class_section: classSection,
