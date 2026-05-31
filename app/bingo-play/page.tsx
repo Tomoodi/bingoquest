@@ -376,8 +376,6 @@ export default function BingoPlayPage() {
           payload: { name: studentName, damage: damageToDealt }
         });
       }
-      // 自分が攻撃したダメージをボスエリアに伝える
-      setAttackEvent({ amount: damageToDealt, time: Date.now() });
 
       // 消費済みなので貯蓄ポイントは 0。ボス HP は BossArea が Realtime で反映する。
       setAccumulatedPoints(0);
