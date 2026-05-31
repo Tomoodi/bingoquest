@@ -1,27 +1,30 @@
 import { getAuthedUser } from "@/lib/supabase/auth";
+import { normalizeWords } from "@/lib/classes";
 import { supabaseServer } from "@/lib/supabase/server";
 
 type CreateClassRequestBody = {
-  teacherName?: unknown;
+  subject?: unknown;
   grade?: unknown;
   classSection?: unknown;
   lessonTheme?: unknown;
   lessonDescription?: unknown;
+  teacherWords?: unknown;
   classCode?: unknown;
 };
 
-type CreateClassErrorCode =
+type ClassErrorCode =
   | "UNAUTHENTICATED"
   | "PROFILE_REQUIRED"
   | "INVALID_JSON"
   | "INVALID_INPUT"
   | "INVALID_CLASS_CODE"
   | "CLASS_CODE_TAKEN"
+  | "FETCH_FAILED"
   | "CREATE_FAILED";
 
 function jsonError(
   status: number,
-  code: CreateClassErrorCode,
+  code: ClassErrorCode,
   message: string
 ): Response {
   return Response.json({ error: { code, message } }, { status });
@@ -33,6 +36,29 @@ function requiredText(value: unknown): string | null {
   const trimmed = value.trim();
   if (trimmed.length === 0 || trimmed.length > 100) return null;
   return trimmed;
+}
+
+// 自分（ログイン中の先生）が作成したクラス一覧を返す。
+export async function GET(request: Request) {
+  const user = await getAuthedUser(request);
+  if (!user) {
+    return jsonError(401, "UNAUTHENTICATED", "ログインが必要です。");
+  }
+
+  const { data, error } = await supabaseServer
+    .from("classes")
+    .select(
+      "id, code, name, grade, class_section, lesson_theme, lesson_description, teacher_words, teacher_name, created_at"
+    )
+    .eq("teacher_id", user.id)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("Failed to fetch classes:", error);
+    return jsonError(500, "FETCH_FAILED", "クラス一覧の取得に失敗しました。");
+  }
+
+  return Response.json({ classes: data ?? [] });
 }
 
 export async function POST(request: Request) {
@@ -70,20 +96,15 @@ export async function POST(request: Request) {
     return jsonError(400, "INVALID_JSON", "リクエストの形式が正しくありません。");
   }
 
-  // 表示用の先生名はプロフィールを正とし、body は後方互換のフォールバック。
-  const teacherName = teacher.name ?? requiredText(body.teacherName);
+  // name には教科名を入れる（seed と整合: name='英語' 等）。先生名はプロフィール由来。
+  const subject = requiredText(body.subject);
   const grade = requiredText(body.grade);
   const classSection = requiredText(body.classSection);
   const lessonTheme = requiredText(body.lessonTheme);
   const lessonDescription = requiredText(body.lessonDescription);
+  const teacherWords = normalizeWords(body.teacherWords);
 
-  if (
-    !teacherName ||
-    !grade ||
-    !classSection ||
-    !lessonTheme ||
-    !lessonDescription
-  ) {
+  if (!subject || !grade || !classSection || !lessonTheme || !lessonDescription) {
     return jsonError(400, "INVALID_INPUT", "入力内容が正しくありません。");
   }
 
@@ -98,22 +119,19 @@ export async function POST(request: Request) {
     );
   }
 
-  // 学年と組をクラス名として保存する（例: "2年3組"）。
-  const name = `${grade}${classSection}`;
-
-  // クラスを作成する。各クラスのボスは classes への insert トリガーで自動生成される
-  // （20260530020000_boss_per_class.sql）。
+  // クラスを作成する。ボスは作成後にフロントから POST /api/boss-states で初期化する。
   const { data: classData, error: classError } = await supabaseServer
     .from("classes")
     .insert({
       code: classCode,
-      name,
+      name: subject,
       teacher_id: user.id,
-      teacher_name: teacherName,
+      teacher_name: teacher.name,
       grade,
       class_section: classSection,
       lesson_theme: lessonTheme,
       lesson_description: lessonDescription,
+      teacher_words: teacherWords,
     })
     .select("id, code")
     .single();
