@@ -280,11 +280,7 @@ export default function BingoCreatePage() {
                 {session.class.name}
               </span>
             </div>
-            {session.class.lessonDescription ? (
-              <p className="mt-3 text-xs leading-relaxed text-slate-300">
-                {session.class.lessonDescription}
-              </p>
-            ) : null}
+            {/* lessonDescription はネタバレになるため生徒側には表示しない（AI生成には引き続き利用） */}
           </section>
         ) : null}
         
