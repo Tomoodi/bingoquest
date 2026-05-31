@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase/client";
 import BossArea from "@/components/BossArea";
 import { motion, AnimatePresence } from "framer-motion";
+import { RealtimeChannel } from "@supabase/supabase-js"
 
 type BingoQuestSession = {
   student: {
@@ -85,7 +86,10 @@ export default function BingoPlayPage() {
   // バトルログ、自分の名前、通信チャンネルの管理
   const [battleLogs, setBattleLogs] = useState<BattleLog[]>([]);
   const [studentName, setStudentName] = useState<string>("勇者");
-  const roomChannelRef = useRef<any>(null);
+  const roomChannelRef = useRef<RealtimeChannel | null>(null);
+
+  // ボスに渡す用の「直近で受けたダメージ」
+  const [attackEvent, setAttackEvent] = useState<{ amount: number; time: number } | null>(null);
 
   // sessionStorage からコードを取得してクラス情報を読み込む処理 (setTimeoutで非同期化)
   useEffect(() => {
@@ -156,7 +160,7 @@ export default function BingoPlayPage() {
       config: { broadcast: { self: true } } // 自分の送信も受信する
     });
 
-    channel.on('broadcast', { event: 'attack' }, ({ payload }) => {
+    channel.on('broadcast', { event: 'attack' }, ({ payload }: { payload: { name: string; damage: number } }) => {
       // 誰かが攻撃したというメッセージを受信したらログに追加
       const newLog = {
         id: Date.now().toString() + Math.random(),
@@ -164,6 +168,9 @@ export default function BingoPlayPage() {
         timestamp: Date.now()
       };
       setBattleLogs(prev => [...prev, newLog]);
+
+      // 他人が攻撃したダメージもボスエリアに伝える
+      setAttackEvent({ amount: payload.damage, time: Date.now() });
 
       // 4秒後に自動で消す
       setTimeout(() => {
@@ -369,6 +376,8 @@ export default function BingoPlayPage() {
           payload: { name: studentName, damage: damageToDealt }
         });
       }
+      // 自分が攻撃したダメージをボスエリアに伝える
+      setAttackEvent({ amount: damageToDealt, time: Date.now() });
 
       // 消費済みなので貯蓄ポイントは 0。ボス HP は BossArea が Realtime で反映する。
       setAccumulatedPoints(0);
@@ -451,7 +460,7 @@ export default function BingoPlayPage() {
 
         {/* リアルタイムボスエリア */}
         {classId ? (
-          <BossArea classId={classId} />
+          <BossArea classId={classId} attackEvent={attackEvent} />
         ) : (
           <div className="w-full p-6 bg-slate-900/40 rounded-xl border border-slate-800 text-center text-xs text-slate-500 animate-pulse">
             {className === "読み込み中..." ? "ボスを召喚中..." : "クラス情報が取得できません"}
