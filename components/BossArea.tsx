@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '@/lib/supabase/client';
+import Image from 'next/image';
 
 type BossState = {
   id: string;
@@ -11,6 +12,8 @@ type BossState = {
   max_hp: number;
   current_hp: number;
   total_damage: number; // 総ダメージ
+  image_url: string | null; // ボス通常画像
+  overkill_image_url: string | null; // ボス第2形態画像（オーバーキルモード用）
   created_at: string;
   updated_at: string;
 };
@@ -93,6 +96,9 @@ export default function BossArea({ classId }: { classId: string }) {
   // HPの割合を計算（0未満にならないようにMath.maxを使用）
   const hpPercentage = Math.max(0, (boss.current_hp / boss.max_hp) * 100);
 
+  // 現在の状態に応じて表示する画像URLを決定
+  const currentImageUrl = isOverkill ? boss.overkill_image_url : boss.image_url;
+
   return (
     <div className={`w-full max-w-lg mx-auto p-6 rounded-xl shadow-2xl text-white transition-colors duration-1000 ${
       isOverkill ? 'bg-purple-950 border border-purple-500 shadow-[0_0_20px_rgba(168,85,247,0.4)]' : 'bg-slate-800'
@@ -127,11 +133,24 @@ export default function BossArea({ classId }: { classId: string }) {
             : { x: 0, y: 0, filter: "brightness(1) saturate(1)" }
           }
           transition={{ duration: 0.4, ease: "easeInOut" }}
-          className={`w-32 h-32 rounded-lg shadow-lg flex items-center justify-center text-6xl transition-colors duration-1000 ${
-            isOverkill ? 'bg-fuchsia-900 shadow-[0_0_30px_rgba(232,121,249,0.8)]' : 'bg-purple-600'
+          // 画像がない場合は背景色をつけるが、画像がある場合は透明にして画像を際立たせる
+          className={`w-32 h-32 rounded-lg flex items-center justify-center text-6xl transition-colors duration-1000 relative ${
+            currentImageUrl 
+              ? 'drop-shadow-[0_0_15px_rgba(0,0,0,0.5)]' 
+              : (isOverkill ? 'bg-fuchsia-900 shadow-[0_0_30px_rgba(232,121,249,0.8)]' : 'bg-purple-600 shadow-lg')
           }`}
         >
-          {isOverkill ? '👿' : '👾'}
+          {/* URLがあれば<Image>で画像を表示し、無ければ絵文字を表示 */}
+          {currentImageUrl ? (
+            <Image 
+              src={currentImageUrl} 
+              alt={boss.name} 
+              fill
+              className="object-contain drop-shadow-2xl" 
+            />
+          ) : (
+            isOverkill ? '👿' : '👾'
+          )}
         </motion.div>
 
         {/* フワッと浮かび上がって消えるダメージ数値 */}

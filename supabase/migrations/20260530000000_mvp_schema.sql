@@ -67,6 +67,8 @@ create table if not exists public.boss_states (
   max_hp integer not null default 1000 check (max_hp > 0),
   current_hp integer not null default 1000 check (current_hp >= 0),
   total_damage integer not null default 0,
+  image_url text,          -- 通常時のボス画像URL
+  overkill_image_url text, -- 第2形態（オーバーキル）時のボス画像URL
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   check (current_hp <= max_hp)
@@ -339,8 +341,8 @@ set
   lesson_description = excluded.lesson_description,
   teacher_words = excluded.teacher_words;
 
-insert into public.boss_states (class_id, name, max_hp, current_hp)
-select id, 'スライムキング', 1000, 1000, 0
+insert into public.boss_states (class_id, name, max_hp, current_hp, total_damage, image_url, overkill_image_url)
+select id, 'スライムキング', 1000, 1000, 0, 'https://dtapyqlfglftlfcpggjn.supabase.co/storage/v1/object/public/game-assets/slime.png', 'https://dtapyqlfglftlfcpggjn.supabase.co/storage/v1/object/public/game-assets/slime-overkill.png'
 from public.classes
 where code = '123456'
 on conflict (class_id) do nothing;
