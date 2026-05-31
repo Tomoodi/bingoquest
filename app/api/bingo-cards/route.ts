@@ -16,8 +16,19 @@ type CreateBingoCardErrorCode =
   | "INVALID_JSON"
   | "INVALID_SESSION"
   | "INVALID_CELLS"
+  | "CARD_NOT_FOUND"
   | "STUDENT_NOT_FOUND"
+  | "FETCH_FAILED"
   | "SAVE_FAILED";
+
+type DbBingoCell = {
+  id: string;
+  position: number;
+  text: string;
+  is_free: boolean;
+  is_opened: boolean;
+  opened_at: string | null;
+};
 
 function jsonError(
   status: number,
@@ -93,6 +104,83 @@ function parseCells(cells: unknown) {
   return parsedCells;
 }
 
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const cardId = searchParams.get("cardId") ?? "";
+  const classId = searchParams.get("classId") ?? "";
+  const studentId = searchParams.get("studentId") ?? "";
+
+  if (!isUuid(cardId) || !isUuid(classId) || !isUuid(studentId)) {
+    return jsonError(400, "INVALID_SESSION", "ログイン情報が正しくありません。");
+  }
+
+  const { data: cardData, error: cardError } = await supabaseServer
+    .from("bingo_cards")
+    .select("id")
+    .eq("id", cardId)
+    .eq("class_id", classId)
+    .eq("student_id", studentId)
+    .maybeSingle();
+
+  if (cardError) {
+    console.error("Failed to fetch bingo card:", cardError);
+    return jsonError(500, "FETCH_FAILED", "ビンゴカードの取得に失敗しました。");
+  }
+
+  if (!cardData) {
+    return jsonError(404, "CARD_NOT_FOUND", "ビンゴカードが見つかりません。");
+  }
+
+  const { data: cellsData, error: cellsError } = await supabaseServer
+    .from("bingo_cells")
+    .select("id, position, text, is_free, is_opened, opened_at")
+    .eq("card_id", cardId)
+    .order("position", { ascending: true });
+
+  if (cellsError) {
+    console.error("Failed to fetch bingo cells:", cellsError);
+    return jsonError(500, "FETCH_FAILED", "ビンゴカードのマス取得に失敗しました。");
+  }
+
+  const cells = (cellsData ?? []) as DbBingoCell[];
+
+  if (cells.length !== 25) {
+    return jsonError(404, "CARD_NOT_FOUND", "ビンゴカードのマスが揃っていません。");
+  }
+
+  // 初期表示用に、まだ攻撃に使っていない（consumed_at = null）ポイント合計を集計する。
+  const { data: pointRows, error: pointsError } = await supabaseServer
+    .from("point_events")
+    .select("points")
+    .eq("student_id", studentId)
+    .is("consumed_at", null);
+
+  if (pointsError) {
+    console.error("Failed to sum accumulated points:", pointsError);
+    return jsonError(500, "FETCH_FAILED", "ポイントの集計に失敗しました。");
+  }
+
+  const accumulatedPoints = (pointRows ?? []).reduce(
+    (total, row) => total + (row.points as number),
+    0
+  );
+
+  return Response.json({
+    card: {
+      id: cardData.id,
+      cells: cells.map((cell) => ({
+        id: cell.id,
+        position: cell.position,
+        text: cell.text,
+        isFree: cell.is_free,
+        isOpened: cell.is_opened,
+        openedAt: cell.opened_at,
+      })),
+    },
+    accumulatedPoints,
+  });
+}
+
 export async function POST(request: Request) {
   let body: CreateBingoCardRequestBody;
 
@@ -113,6 +201,17 @@ export async function POST(request: Request) {
 
   if (!cells) {
     return jsonError(400, "INVALID_CELLS", "ビンゴカードの入力内容が正しくありません。");
+  }
+
+  // FREEマス以外のマスの「テキスト（単語）」をランダムにシャッフルする
+  const normalCells = cells.filter((cell) => cell !== null && !cell.is_free);
+  
+  for (let i = normalCells.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    // normalCells[i] と normalCells[j] が存在することを ! で保証する
+    const tempText = normalCells[i]!.text;
+    normalCells[i]!.text = normalCells[j]!.text;
+    normalCells[j]!.text = tempText;
   }
 
   const { data: studentData, error: studentError } = await supabaseServer
