@@ -106,6 +106,18 @@ export default function BingoCreatePage() {
     setInputs((prev) => ({ ...prev, [id]: value }));
   };
 
+  // デモ/AI未完成時のフォールバック: プレースホルダー（例: ...）を流用して
+  // 24マスをまとめて埋める。FREE（13番）は対象外。
+  const handleAutoFill = () => {
+    const filled: { [key: number]: string } = {};
+    for (let id = 1; id <= 25; id++) {
+      if (id === 13) continue;
+      const sample = placeholders[id]?.replace(/^例:\s*/, "") ?? `予想ワード${id}`;
+      filled[id] = sample;
+    }
+    setInputs(filled);
+  };
+
   const gridCells = Array.from({ length: 25 }, (_, i) => i + 1);
 
   const filledCount = gridCells.filter(
@@ -281,6 +293,15 @@ export default function BingoCreatePage() {
           <span className="text-purple-400 font-bold">🎯 予習のコツ：</span>
           次の時間の教科書やノートをパラパラとめくって、新しく出てくる単語や大事そうな文法を見つけてマスを埋めよう！授業中に起きそうな出来事などお楽しみ要素を混ぜてもOK！
         </div>
+
+        {/* デモ用: サンプル自動入力 */}
+        <button
+          type="button"
+          onClick={handleAutoFill}
+          className="w-full rounded-xl border border-dashed border-emerald-500/40 bg-emerald-500/5 py-2.5 text-xs font-bold tracking-wide text-emerald-300 hover:bg-emerald-500/10 active:scale-[0.99] transition-all"
+        >
+          🎲 サンプルを自動入力（デモ用）
+        </button>
 
         {/* 5x5 入力グリッド */}
         <div className="grid grid-cols-5 gap-2 w-full aspect-square">
