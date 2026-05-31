@@ -35,10 +35,10 @@ function isUuid(value: string): boolean {
   );
 }
 
-function requiredText(value: unknown): string | null {
+function requiredText(value: unknown, maxLength = 100): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
-  if (trimmed.length === 0 || trimmed.length > 100) return null;
+  if (trimmed.length === 0 || trimmed.length > maxLength) return null;
   return trimmed;
 }
 
@@ -136,7 +136,7 @@ export async function PATCH(
   const grade = requiredText(body.grade);
   const classSection = requiredText(body.classSection);
   const lessonTheme = requiredText(body.lessonTheme);
-  const lessonDescription = requiredText(body.lessonDescription);
+  const lessonDescription = requiredText(body.lessonDescription, 1000);
   const teacherWords = normalizeWords(body.teacherWords);
 
   if (!subject || !grade || !classSection || !lessonTheme || !lessonDescription) {
