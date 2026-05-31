@@ -17,6 +17,7 @@ type BingoQuestSession = {
     classSection: string | null;
     lessonTheme: string | null;
     lessonDescription: string | null;
+    teacherWords: string[];
   };
   bingoCard?: {
     id: string;
@@ -134,7 +135,7 @@ export default function BingoCreatePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           studentWords: aiStudentWords.filter(w => w.trim() !== ""),
-          teacherWords: [],
+          teacherWords: session?.class.teacherWords ?? [],
           lesson_theme: session?.class.lessonTheme ?? "",
           lesson_description: session?.class.lessonDescription ?? "",
           class_id: session?.class.id,
